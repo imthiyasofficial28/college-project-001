@@ -50,9 +50,17 @@ import {
   StudentRiskIndicator,
   DigitalTwinNode,
 } from '../types/index.ts';
+import { standaloneStorage } from './client-storage.ts';
 
 const TOKEN_KEY = 'cuois_auth_token';
 export const LAST_SAVED_KEY = 'cuois_last_saved_timestamp';
+
+// Initialize standalone defaults once in browser
+if (typeof window !== 'undefined') {
+  standaloneStorage.initDefault();
+}
+
+let isStandaloneMode = false;
 
 export function getStoredToken(): string | null {
   try {
@@ -99,6 +107,153 @@ export function recordLocalMemorySync(customIso?: string): string {
   return timestamp;
 }
 
+function handleStandaloneFallback<T>(endpoint: string, options: RequestInit = {}): T {
+  const method = (options.method || 'GET').toUpperCase();
+  let body: any = {};
+  try {
+    if (options.body) body = JSON.parse(options.body as string);
+  } catch {}
+
+  if (endpoint === '/api/bootstrap/status') {
+    const inst = standaloneStorage.get<Institution | null>('institution', null);
+    return { isConfigured: true, institution: inst } as unknown as T;
+  }
+  if (endpoint === '/api/institution') {
+    if (method === 'PUT') {
+      const existing = standaloneStorage.get<Institution | null>('institution', null) || ({} as Institution);
+      const updated = { ...existing, ...body, updatedAt: new Date().toISOString() };
+      standaloneStorage.set('institution', updated);
+      recordLocalMemorySync();
+      return updated as unknown as T;
+    }
+    return standaloneStorage.get<Institution | null>('institution', null) as unknown as T;
+  }
+  if (endpoint === '/api/auth/login') {
+    const { identifier } = body;
+    const users = standaloneStorage.get<User[]>('users', []);
+    const cleanId = (identifier || '').trim().toUpperCase();
+    const match = users.find(u => u.username?.toUpperCase() === cleanId || u.email?.toUpperCase() === cleanId) || users[0];
+    
+    const session: AuthSession = {
+      token: 'standalone-token-' + Date.now(),
+      user: match,
+      expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+      rolePermissions: ['*'],
+    };
+    setStoredToken(session.token);
+    recordLocalMemorySync();
+    return { session } as unknown as T;
+  }
+  if (endpoint === '/api/auth/me') {
+    const users = standaloneStorage.get<User[]>('users', []);
+    const user = users[0] || null;
+    return { user, sessionToken: getStoredToken() || 'standalone-token', rolePermissions: ['*'] } as unknown as T;
+  }
+  if (endpoint === '/api/auth/update-profile') {
+    const users = standaloneStorage.get<User[]>('users', []);
+    if (users.length > 0) {
+      users[0] = { ...users[0], ...body, updatedAt: new Date().toISOString() };
+      standaloneStorage.set('users', users);
+      recordLocalMemorySync();
+      return { success: true, user: users[0] } as unknown as T;
+    }
+    return { success: true, user: body } as unknown as T;
+  }
+  if (endpoint === '/api/auth/change-password') {
+    return { success: true, message: 'Password updated successfully' } as unknown as T;
+  }
+  if (endpoint === '/api/digital-twin/nodes') {
+    if (method === 'POST') {
+      const nodes = standaloneStorage.get<DigitalTwinNode[]>('digitalTwinNodes', []);
+      const newNode: DigitalTwinNode = {
+        ...body,
+        id: 'twin-node-' + Date.now(),
+        lastTelemetryUpdate: new Date().toISOString(),
+      };
+      nodes.push(newNode);
+      standaloneStorage.set('digitalTwinNodes', nodes);
+      recordLocalMemorySync();
+      return newNode as unknown as T;
+    }
+    return standaloneStorage.get<DigitalTwinNode[]>('digitalTwinNodes', []) as unknown as T;
+  }
+  if (endpoint.startsWith('/api/digital-twin/nodes/')) {
+    const parts = endpoint.split('/');
+    const id = parts[parts.length - 1];
+    const nodes = standaloneStorage.get<DigitalTwinNode[]>('digitalTwinNodes', []);
+    if (method === 'PUT') {
+      const idx = nodes.findIndex(n => n.id === id);
+      if (idx >= 0) {
+        nodes[idx] = { ...nodes[idx], ...body, lastTelemetryUpdate: new Date().toISOString() };
+        standaloneStorage.set('digitalTwinNodes', nodes);
+        recordLocalMemorySync();
+        return nodes[idx] as unknown as T;
+      }
+    }
+    if (method === 'DELETE') {
+      const filtered = nodes.filter(n => n.id !== id);
+      standaloneStorage.set('digitalTwinNodes', filtered);
+      recordLocalMemorySync();
+      return { success: true } as unknown as T;
+    }
+  }
+  if (endpoint === '/api/users') {
+    if (method === 'POST') {
+      const users = standaloneStorage.get<User[]>('users', []);
+      const newUser: User = {
+        ...body,
+        id: 'usr-' + Date.now(),
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      users.push(newUser);
+      standaloneStorage.set('users', users);
+      recordLocalMemorySync();
+      return newUser as unknown as T;
+    }
+    return standaloneStorage.get<User[]>('users', []) as unknown as T;
+  }
+  if (endpoint.startsWith('/api/users/')) {
+    const parts = endpoint.split('/');
+    const id = parts[3];
+    const subAction = parts[4];
+    const users = standaloneStorage.get<User[]>('users', []);
+    const idx = users.findIndex(u => u.id === id);
+    if (subAction === 'reset-password') {
+      return { success: true, message: 'Password reset successfully' } as unknown as T;
+    }
+    if (method === 'PUT' && idx >= 0) {
+      users[idx] = { ...users[idx], ...body, updatedAt: new Date().toISOString() };
+      standaloneStorage.set('users', users);
+      recordLocalMemorySync();
+      return users[idx] as unknown as T;
+    }
+    if (method === 'DELETE') {
+      const filtered = users.filter(u => u.id !== id);
+      standaloneStorage.set('users', filtered);
+      recordLocalMemorySync();
+      return { success: true } as unknown as T;
+    }
+  }
+
+  // Fallback defaults
+  if (endpoint === '/api/notifications') return [] as unknown as T;
+  if (endpoint === '/api/telemetry') {
+    return {
+      activeConnections: 1,
+      totalRequestsToday: 12,
+      databaseSizeBytes: 204800,
+      memoryUsageMb: 85,
+      cpuLoadPercent: 4.2,
+      uptimeSeconds: 3600,
+      systemHealth: 'HEALTHY',
+    } as unknown as T;
+  }
+
+  return ([] as unknown) as T;
+}
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = getStoredToken();
   const headers = new Headers(options.headers || {});
@@ -110,21 +265,42 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const method = (options.method || 'GET').toUpperCase();
   const isMutation = method !== 'GET' && method !== 'HEAD';
 
-  const res = await fetch(endpoint, {
-    ...options,
-    headers,
-  });
-
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.error || `HTTP error ${res.status}: ${res.statusText}`);
+  if (isStandaloneMode) {
+    return handleStandaloneFallback<T>(endpoint, options);
   }
 
-  const data = await res.json();
-  if (isMutation) {
-    recordLocalMemorySync();
+  try {
+    const res = await fetch(endpoint, {
+      ...options,
+      headers,
+    });
+
+    if (res.status === 404) {
+      // Backend not found (e.g. GitHub Pages static hosting)
+      console.warn(`[CUOIS] Backend endpoint ${endpoint} 404 Not Found. Switching to standalone client mode.`);
+      isStandaloneMode = true;
+      return handleStandaloneFallback<T>(endpoint, options);
+    }
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.error || `HTTP error ${res.status}: ${res.statusText}`);
+    }
+
+    const data = await res.json();
+    if (isMutation) {
+      recordLocalMemorySync();
+    }
+    return data;
+  } catch (err: any) {
+    // If fetch failed completely (network disconnected or static host)
+    if (err.name === 'TypeError' || err.message?.includes('fetch')) {
+      console.warn('[CUOIS] Network unreachable, activating standalone mode:', err.message);
+      isStandaloneMode = true;
+      return handleStandaloneFallback<T>(endpoint, options);
+    }
+    throw err;
   }
-  return data;
 }
 
 export const api = {
@@ -375,15 +551,26 @@ export const api = {
 
   // SSE Stream
   subscribeRealtimeEvents: (onEvent: (event: { type: string; timestamp: string; data: any }) => void) => {
-    const eventSource = new EventSource('/api/realtime/stream');
-    eventSource.onmessage = (e) => {
-      try {
-        const parsed = JSON.parse(e.data);
-        onEvent(parsed);
-      } catch {
-        // ignore parse error
-      }
-    };
-    return () => eventSource.close();
+    if (typeof window === 'undefined' || isStandaloneMode) {
+      return () => {};
+    }
+    try {
+      const eventSource = new EventSource('/api/realtime/stream');
+      eventSource.onmessage = (e) => {
+        try {
+          const parsed = JSON.parse(e.data);
+          onEvent(parsed);
+        } catch {
+          // ignore parse error
+        }
+      };
+      eventSource.onerror = () => {
+        // If SSE fails (e.g., on GitHub Pages or static hosting), close gracefully
+        eventSource.close();
+      };
+      return () => eventSource.close();
+    } catch {
+      return () => {};
+    }
   },
 };
