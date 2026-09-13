@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './lib/auth-context.tsx';
 import { Navbar } from './components/layout/Navbar.tsx';
-import { Sidebar } from './components/layout/Sidebar.tsx';
+import { Sidebar, NavView } from './components/layout/Sidebar.tsx';
 import { CommandPalette } from './components/layout/CommandPalette.tsx';
 import { BootstrapSetupView } from './components/views/BootstrapSetupView.tsx';
 import { LoginView } from './components/views/LoginView.tsx';
@@ -22,14 +22,43 @@ import { UsersRbacView } from './components/views/UsersRbacView.tsx';
 import { AuditLogsView } from './components/views/AuditLogsView.tsx';
 import { DataImportView } from './components/views/DataImportView.tsx';
 import { SettingsView } from './components/views/SettingsView.tsx';
+import { ProfileView } from './components/views/ProfileView.tsx';
+
+// Role-specific and high-capability views
+import { StudentDashboardView } from './components/views/StudentDashboardView.tsx';
+import { FacultyDashboardView } from './components/views/FacultyDashboardView.tsx';
+import { DigitalTwinView } from './components/views/DigitalTwinView.tsx';
+import { InstitutionConfigView } from './components/views/InstitutionConfigView.tsx';
+import { ConfidentialReportsView } from './components/views/ConfidentialReportsView.tsx';
+import { SurveysView } from './components/views/SurveysView.tsx';
+import { StudentRiskView } from './components/views/StudentRiskView.tsx';
+import { StudentAcademicsView } from './components/views/StudentAcademicsView.tsx';
+
 import { Loader2 } from 'lucide-react';
 
 const AppContent: React.FC = () => {
-  const { isBootstrapped, user, isLoading } = useAuth();
-  const [currentView, setCurrentView] = useState('dashboard');
+  const { isBootstrapped, user, activeRole, isLoading } = useAuth();
+  const [currentView, setCurrentView] = useState<NavView>('dashboard');
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
 
-  // Global shortcut to open command palette
+  // Sync initial view to role when role changes
+  useEffect(() => {
+    if (activeRole === 'STUDENT') {
+      setCurrentView('student-dashboard');
+    } else if (activeRole === 'FACULTY') {
+      setCurrentView('faculty-dashboard');
+    } else if (activeRole === 'SYSTEM_OWNER' || activeRole === 'ADMINISTRATOR') {
+      setCurrentView((prev) => {
+        if (prev.startsWith('student-') || prev.startsWith('faculty-')) {
+          return 'dashboard';
+        }
+        return prev;
+      });
+    }
+  }, [activeRole]);
+
+  // Global shortcut to open command palette (Cmd+K / Ctrl+K)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -64,9 +93,59 @@ const AppContent: React.FC = () => {
     return <LoginView />;
   }
 
-  // 3. Authenticated Campus Command Center
+  // 3. Authenticated Campus Operations & Role Routing
   const renderActiveView = () => {
     switch (currentView) {
+      // Student Specialized Views
+      case 'student-dashboard':
+        return <StudentDashboardView onNavigate={setCurrentView} />;
+      case 'student-academics':
+      case 'student-examinations':
+      case 'student-assignments':
+        return <StudentAcademicsView />;
+      case 'student-attendance':
+        return <AttendanceView />;
+      case 'student-timetable':
+        return <TimetableView />;
+      case 'student-surveys':
+        return <SurveysView />;
+      case 'student-confidential-report':
+        return <ConfidentialReportsView />;
+      case 'student-announcements':
+      case 'student-services':
+        return <HostelTransportView />;
+      case 'student-ai-advisor':
+        return <AICommandView />;
+
+      // Faculty Specialized Views
+      case 'faculty-dashboard':
+        return <FacultyDashboardView onNavigate={setCurrentView} />;
+      case 'faculty-timetable':
+        return <TimetableView />;
+      case 'faculty-attendance':
+        return <AttendanceView />;
+      case 'faculty-assignments':
+        return <StudentAcademicsView />;
+      case 'faculty-students-risk':
+        return <StudentRiskView />;
+      case 'faculty-maintenance':
+        return <FacilitiesView />;
+      case 'faculty-surveys':
+        return <SurveysView />;
+      case 'faculty-confidential-report':
+        return <ConfidentialReportsView />;
+      case 'faculty-ai-assistant':
+        return <AICommandView />;
+
+      // System Owner & Sovereign Management Views
+      case 'digital-twin':
+        return <DigitalTwinView />;
+      case 'institution-config':
+        return <InstitutionConfigView />;
+      case 'confidential-reports':
+        return <ConfidentialReportsView />;
+      case 'surveys':
+        return <SurveysView />;
       case 'dashboard':
         return <DashboardView onNavigate={setCurrentView} />;
       case 'students':
@@ -101,7 +180,12 @@ const AppContent: React.FC = () => {
         return <DataImportView />;
       case 'settings':
         return <SettingsView />;
+      case 'profile':
+        return <ProfileView onNavigate={setCurrentView} />;
+
       default:
+        if (activeRole === 'STUDENT') return <StudentDashboardView onNavigate={setCurrentView} />;
+        if (activeRole === 'FACULTY') return <FacultyDashboardView onNavigate={setCurrentView} />;
         return <DashboardView onNavigate={setCurrentView} />;
     }
   };
@@ -117,7 +201,12 @@ const AppContent: React.FC = () => {
       {/* Main Workspace Area */}
       <div className="flex-1 flex overflow-hidden">
         {/* Persistent Executive Sidebar */}
-        <Sidebar activeView={currentView} onSelectView={setCurrentView} />
+        <Sidebar
+          currentView={currentView}
+          onSelectView={setCurrentView}
+          isCollapsed={isCollapsed}
+          onToggleCollapse={() => setIsCollapsed((prev) => !prev)}
+        />
 
         {/* Viewport Area */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-[#06090F]">

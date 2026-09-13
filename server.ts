@@ -6,7 +6,6 @@
 import express, { Request, Response } from 'express';
 import http from 'http';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { WebSocketServer, WebSocket } from 'ws';
 import { Modality, LiveServerMessage } from '@google/genai';
@@ -29,9 +28,6 @@ import {
 import { SystemTelemetry, UserRole } from './src/types/index.ts';
 
 dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 3000;
@@ -123,6 +119,20 @@ app.get('/api/realtime/stream', (req, res) => {
 });
 
 // --- BOOTSTRAP & INSTITUTION SETUP ---
+app.get('/api/institution', (req, res) => {
+  res.json(db.getInstitution());
+});
+
+app.put('/api/institution', requireRole(['SYSTEM_OWNER', 'ADMINISTRATOR']), (req, res) => {
+  try {
+    const updated = db.updateInstitution(req.body);
+    broadcastRealtimeEvent('INSTITUTION_UPDATED', updated);
+    res.json(updated);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || 'Failed to update institution' });
+  }
+});
+
 app.get('/api/bootstrap/status', (req, res) => {
   const institution = db.getInstitution();
   res.json({
@@ -184,16 +194,18 @@ app.post('/api/bootstrap/reset', authenticate, requireRole(['SYSTEM_OWNER']), (r
 
 // --- AUTHENTICATION & SESSION ---
 app.post('/api/auth/login', (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    res.status(400).json({ error: 'Email and password are required.' });
+  const { email, password, username, identifier } = req.body;
+  const loginId = (identifier || email || username || '').trim();
+
+  if (!loginId || !password) {
+    res.status(400).json({ error: 'Compulsory Member ID and Password are required to enter the system.' });
     return;
   }
 
-  const userWithSecrets = db.findUserByEmail(email) || db.getRaw().users.find((u) => u.username === email);
+  const userWithSecrets = db.findUserByIdentifier(loginId);
 
   if (!userWithSecrets) {
-    res.status(401).json({ error: 'Invalid credentials provided.' });
+    res.status(401).json({ error: 'Invalid Member ID or Password. Only registered campus accounts can enter.' });
     return;
   }
 
@@ -253,6 +265,196 @@ app.post('/api/auth/login', (req, res) => {
   });
 
   res.json({ session });
+});
+
+// Personalized Direct Entry with Custom Name
+app.post('/api/auth/personalized-entry', (req, res) => {
+  const { fullName, role = 'SYSTEM_OWNER', password } = req.body;
+  if (!fullName || !fullName.trim()) {
+    res.status(400).json({ error: 'Please enter your name to proceed.' });
+    return;
+  }
+
+  const cleanName = fullName.trim();
+  const rawDb = db.getRaw();
+  const validRole: UserRole = role as UserRole;
+
+  // Look for existing user with this exact name and role, or create
+  let targetUser = rawDb.users.find(
+    (u) => u.fullName.toLowerCase() === cleanName.toLowerCase() && u.role === validRole
+  );
+
+  if (!targetUser) {
+    const sanitizedUsername = cleanName
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '.')
+      .replace(/\.+/g, '.')
+      .replace(/^\.|\.$/g, '') || `user_${Date.now()}`;
+    const email = `${sanitizedUsername}@campus.local`;
+
+    const created = db.createUser({
+      fullName: cleanName,
+      email,
+      username: sanitizedUsername,
+      role: validRole,
+      password: password || 'Cuois@2025',
+      isActive: true,
+      mfaEnabled: false,
+    });
+
+    targetUser = rawDb.users.find((u) => u.id === created.id)!;
+  } else {
+    targetUser.lastLoginAt = new Date().toISOString();
+  }
+
+  // If role is Student, ensure a Student record exists with their name
+  if (validRole === 'STUDENT') {
+    let student = rawDb.students.find(
+      (s) => s.userId === targetUser!.id || s.fullName.toLowerCase() === cleanName.toLowerCase()
+    );
+    if (!student) {
+      db.addStudent({
+        userId: targetUser.id,
+        fullName: cleanName,
+        registrationNumber: `REG-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+        rollNumber: `CS-${Math.floor(100 + Math.random() * 900)}`,
+        email: targetUser.email,
+        phone: '+1 (555) 019-2834',
+        departmentId: rawDb.departments[0]?.id || 'dept_cs',
+        departmentName: rawDb.departments[0]?.name || 'Department of Computer Science & Engineering',
+        programId: rawDb.programs[0]?.id || 'prog_btech_cs',
+        programName: rawDb.programs[0]?.name || 'B.Tech in Computer Science',
+        sectionId: rawDb.sections[0]?.id || 'sec_a',
+        sectionName: rawDb.sections[0]?.name || 'Section A',
+        currentSemester: 4,
+        admissionDate: '2024-08-15',
+        cgpa: 3.82,
+        attendancePercentage: 94.2,
+        guardianName: 'Campus Guardian',
+        guardianPhone: '+1 (555) 019-2800',
+        status: 'ACTIVE',
+      });
+    } else {
+      student.fullName = cleanName;
+    }
+  } else if (validRole === 'FACULTY') {
+    let faculty = rawDb.faculty.find(
+      (f) => f.userId === targetUser!.id || f.fullName.toLowerCase() === cleanName.toLowerCase()
+    );
+    if (!faculty) {
+      db.addFaculty({
+        userId: targetUser.id,
+        employeeCode: `FAC-${Math.floor(100 + Math.random() * 900)}`,
+        fullName: cleanName,
+        email: targetUser.email,
+        phone: '+1 (555) 018-7721',
+        departmentId: rawDb.departments[0]?.id || 'dept_cs',
+        departmentName: rawDb.departments[0]?.name || 'Department of Computer Science & Engineering',
+        designation: 'PROFESSOR',
+        specialization: 'Advanced Systems & AI',
+        qualification: 'Ph.D.',
+        joiningDate: '2021-08-01',
+        workloadHoursPerWeek: 16,
+        status: 'ACTIVE',
+      });
+    } else {
+      faculty.fullName = cleanName;
+    }
+  }
+
+  db.scheduleSave();
+
+  const { passwordHash: _, salt: __, ...userForSession } = targetUser;
+  const session = createSession(userForSession, req.ip || '127.0.0.1', req.headers['user-agent']);
+
+  db.logAudit({
+    actorId: userForSession.id,
+    actorName: userForSession.fullName,
+    actorRole: userForSession.role,
+    action: 'PERSONALIZED_ENTRY_LOGIN',
+    entity: 'AUTH_SESSION',
+    entityId: session.token.substring(0, 8),
+    ipAddress: req.ip || '127.0.0.1',
+  });
+
+  res.json({ session });
+});
+
+// Update Profile (Full Profile Maintenance for Every Person)
+app.put('/api/auth/profile', authenticate, (req: AuthenticatedRequest, res) => {
+  const { fullName, phone, bio, email, avatarUrl, departmentId } = req.body;
+  const rawDb = db.getRaw();
+  const user = rawDb.users.find((u) => u.id === req.user!.id);
+  if (!user) {
+    res.status(404).json({ error: 'User profile not found.' });
+    return;
+  }
+
+  if (fullName !== undefined) {
+    const cleanName = fullName.trim();
+    if (!cleanName) {
+      res.status(400).json({ error: 'Display name cannot be empty.' });
+      return;
+    }
+    user.fullName = cleanName;
+    // Also sync student or faculty records
+    const st = rawDb.students.find((s) => s.userId === user.id);
+    if (st) st.fullName = cleanName;
+    const fac = rawDb.faculty.find((f) => f.userId === user.id);
+    if (fac) fac.fullName = cleanName;
+  }
+
+  if (email !== undefined && email.trim()) {
+    const cleanEmail = email.trim().toLowerCase();
+    const dup = rawDb.users.find((u) => u.id !== user.id && u.email.toLowerCase() === cleanEmail);
+    if (dup) {
+      res.status(400).json({ error: 'Email is already in use by another account.' });
+      return;
+    }
+    user.email = cleanEmail;
+  }
+
+  if (phone !== undefined) user.phone = phone.trim();
+  if (bio !== undefined) user.bio = bio.trim();
+  if (avatarUrl !== undefined) user.avatarUrl = avatarUrl.trim();
+  if (departmentId !== undefined) user.departmentId = departmentId;
+
+  user.updatedAt = new Date().toISOString();
+  db.scheduleSave();
+
+  db.logAudit({
+    actorId: user.id,
+    actorName: user.fullName,
+    actorRole: user.role,
+    action: 'PROFILE_UPDATED',
+    entity: 'USER_PROFILE',
+    entityId: user.id,
+    ipAddress: req.ip || '127.0.0.1',
+  });
+
+  const { passwordHash: _, salt: __, ...cleanUser } = user;
+  res.json({ user: cleanUser });
+});
+
+// Change Password for Every Member
+app.post('/api/auth/change-password', authenticate, (req: AuthenticatedRequest, res) => {
+  const { currentPassword, newPassword } = req.body;
+  const isOwner = req.user!.role === 'SYSTEM_OWNER';
+  const result = db.changeUserPassword(req.user!.id, currentPassword, newPassword, isOwner);
+  if (!result.success) {
+    res.status(400).json({ error: result.error || 'Failed to update password' });
+    return;
+  }
+  db.logAudit({
+    actorId: req.user!.id,
+    actorName: req.user!.fullName,
+    actorRole: req.user!.role,
+    action: 'PASSWORD_UPDATED_BY_USER',
+    entity: 'USER_SECURITY',
+    entityId: req.user!.id,
+    ipAddress: req.ip || '127.0.0.1',
+  });
+  res.json({ success: true, message: 'Password updated successfully.' });
 });
 
 app.get('/api/auth/me', authenticate, (req: AuthenticatedRequest, res) => {
@@ -405,30 +607,67 @@ app.post('/api/users', authenticate, requireRole(['SYSTEM_OWNER', 'ADMINISTRATOR
 });
 
 app.patch('/api/users/:id', authenticate, requireRole(['SYSTEM_OWNER', 'ADMINISTRATOR']), (req: AuthenticatedRequest, res) => {
-  const updated = db.updateUser(req.params.id, req.body);
-  if (!updated) {
-    res.status(404).json({ error: 'User not found' });
+  try {
+    const updated = db.updateUser(req.params.id, req.body);
+    if (!updated) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    db.logAudit({
+      actorId: req.user!.id,
+      actorName: req.user!.fullName,
+      actorRole: req.user!.role,
+      action: 'USER_UPDATED',
+      entity: 'USER',
+      entityId: updated.id,
+      ipAddress: req.ip || '127.0.0.1',
+    });
+    res.json(updated);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || 'Failed to update user' });
+  }
+});
+
+// System Owner Direct Password Reset for any member ID
+app.post('/api/users/:id/reset-password', authenticate, requireRole(['SYSTEM_OWNER']), (req: AuthenticatedRequest, res) => {
+  const { newPassword } = req.body;
+  if (!newPassword || newPassword.length < 6) {
+    res.status(400).json({ error: 'New password must be at least 6 characters long.' });
+    return;
+  }
+  const success = db.resetUserPassword(req.params.id, newPassword);
+  if (!success) {
+    res.status(404).json({ error: 'User account not found.' });
     return;
   }
   db.logAudit({
     actorId: req.user!.id,
     actorName: req.user!.fullName,
     actorRole: req.user!.role,
-    action: 'USER_UPDATED',
-    entity: 'USER',
-    entityId: updated.id,
+    action: 'USER_PASSWORD_RESET_BY_SYSTEM_OWNER',
+    entity: 'USER_SECURITY',
+    entityId: req.params.id,
     ipAddress: req.ip || '127.0.0.1',
   });
-  res.json(updated);
+  res.json({ success: true, message: 'Password has been directly updated by System Owner.' });
 });
 
 app.delete('/api/users/:id', authenticate, requireRole(['SYSTEM_OWNER']), (req: AuthenticatedRequest, res) => {
   const success = db.deleteUser(req.params.id);
   if (!success) {
-    res.status(400).json({ error: 'Could not delete user or cannot delete System Owner.' });
+    res.status(400).json({ error: 'Could not delete user. The Sovereign System Owner account is protected and cannot be deleted.' });
     return;
   }
-  res.json({ success: true });
+  db.logAudit({
+    actorId: req.user!.id,
+    actorName: req.user!.fullName,
+    actorRole: req.user!.role,
+    action: 'USER_DELETED_BY_SYSTEM_OWNER',
+    entity: 'USER',
+    entityId: req.params.id,
+    ipAddress: req.ip || '127.0.0.1',
+  });
+  res.json({ success: true, message: 'User account permanently removed from system.' });
 });
 
 app.get('/api/roles', (req, res) => {
@@ -559,6 +798,162 @@ app.patch('/api/complaints/:id', authenticate, (req: AuthenticatedRequest, res) 
   }
   broadcastRealtimeEvent('COMPLAINT_UPDATED', updated);
   res.json(updated);
+});
+
+// Digital Twin Nodes & Spatial Telemetry CRUD (Strict Authentication Guard)
+app.get('/api/digital-twin/nodes', authenticate, (req: AuthenticatedRequest, res) => {
+  res.json(db.getDigitalTwinNodes());
+});
+
+// Live Weather Telemetry Lookup via Coordinates (Google / Open-Meteo) - Authenticated Members Only
+app.get('/api/digital-twin/weather', authenticate, async (req: AuthenticatedRequest, res) => {
+  const lat = parseFloat(req.query.lat as string) || 37.7749;
+  const lng = parseFloat(req.query.lng as string) || -122.4194;
+
+  const weatherCodeMap: Record<number, string> = {
+    0: 'Clear Sky',
+    1: 'Mainly Clear',
+    2: 'Partly Cloudy',
+    3: 'Overcast',
+    45: 'Fog',
+    48: 'Depositing Rime Fog',
+    51: 'Light Drizzle',
+    53: 'Moderate Drizzle',
+    55: 'Dense Drizzle',
+    61: 'Slight Rain',
+    63: 'Moderate Rain',
+    65: 'Heavy Rain',
+    71: 'Slight Snow Fall',
+    73: 'Moderate Snow Fall',
+    75: 'Heavy Snow Fall',
+    80: 'Slight Rain Showers',
+    81: 'Moderate Rain Showers',
+    82: 'Violent Rain Showers',
+    95: 'Thunderstorm',
+    96: 'Thunderstorm with Slight Hail',
+    99: 'Thunderstorm with Heavy Hail',
+  };
+
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph`;
+    const response = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (response.ok) {
+      const data = await response.json();
+      const current = data.current || {};
+      const condition = weatherCodeMap[current.weather_code] || 'Partly Cloudy';
+      res.json({
+        latitude: lat,
+        longitude: lng,
+        temperatureF: Math.round((current.temperature_2m ?? 72) * 10) / 10,
+        feelsLikeF: Math.round((current.apparent_temperature ?? 71) * 10) / 10,
+        humidity: current.relative_humidity_2m ?? 50,
+        windSpeedMph: Math.round((current.wind_speed_10m ?? 8) * 10) / 10,
+        weatherCode: current.weather_code ?? 2,
+        condition,
+        timestamp: current.time || new Date().toISOString(),
+        source: 'Live Meteorological Telemetry',
+      });
+      return;
+    }
+  } catch {
+    // Fallback if network/offline
+  }
+
+  // Fallback realistic climate calculation based on coordinates
+  const simulatedTemp = Math.round((70 + Math.sin(lat) * 8 + Math.cos(lng) * 4) * 10) / 10;
+  res.json({
+    latitude: lat,
+    longitude: lng,
+    temperatureF: simulatedTemp,
+    feelsLikeF: simulatedTemp - 1,
+    humidity: 54,
+    windSpeedMph: 7.5,
+    weatherCode: 2,
+    condition: 'Partly Cloudy',
+    timestamp: new Date().toISOString(),
+    source: 'Spatial Sensor Model',
+  });
+});
+
+// Sync Live Weather directly to a specific Digital Twin Node
+app.post('/api/digital-twin/nodes/:id/weather-sync', authenticate, async (req: AuthenticatedRequest, res) => {
+  const nodes = db.getDigitalTwinNodes();
+  const node = nodes.find((n) => n.id === req.params.id);
+  if (!node) {
+    res.status(404).json({ error: 'Digital twin node not found' });
+    return;
+  }
+
+  const lat = node.latitude || 37.7749;
+  const lng = node.longitude || -122.4194;
+
+  let tempF = node.temperatureF;
+  let condition = node.weatherCondition || 'Partly Cloudy';
+  let humidity = node.weatherHumidity || 52;
+  let windSpeed = node.weatherWindMph || 8.0;
+
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph`;
+    const response = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (response.ok) {
+      const data = await response.json();
+      const current = data.current || {};
+      tempF = Math.round((current.temperature_2m ?? tempF) * 10) / 10;
+      humidity = current.relative_humidity_2m ?? humidity;
+      windSpeed = Math.round((current.wind_speed_10m ?? windSpeed) * 10) / 10;
+      const weatherCodeMap: Record<number, string> = {
+        0: 'Clear Sky', 1: 'Mainly Clear', 2: 'Partly Cloudy', 3: 'Overcast',
+        45: 'Fog', 48: 'Depositing Rime Fog', 51: 'Light Drizzle', 53: 'Moderate Drizzle',
+        55: 'Dense Drizzle', 61: 'Slight Rain', 63: 'Moderate Rain', 65: 'Heavy Rain',
+        71: 'Slight Snow Fall', 73: 'Moderate Snow Fall', 75: 'Heavy Snow Fall',
+        80: 'Slight Rain Showers', 81: 'Moderate Rain Showers', 82: 'Violent Rain Showers',
+        95: 'Thunderstorm', 96: 'Thunderstorm with Hail', 99: 'Severe Thunderstorm',
+      };
+      condition = weatherCodeMap[current.weather_code] || 'Partly Cloudy';
+    }
+  } catch {
+    // Keep or slight variance
+    tempF = Math.round((tempF + (Math.random() - 0.5) * 1.5) * 10) / 10;
+  }
+
+  const updated = db.updateDigitalTwinNode(node.id, {
+    temperatureF: tempF,
+    weatherCondition: condition,
+    weatherHumidity: humidity,
+    weatherWindMph: windSpeed,
+    weatherLastUpdated: new Date().toISOString(),
+  });
+
+  if (updated) {
+    broadcastRealtimeEvent('DIGITAL_TWIN_NODE_UPDATED', updated);
+  }
+  res.json(updated || node);
+});
+
+app.post('/api/digital-twin/nodes', authenticate, (req: AuthenticatedRequest, res) => {
+  const node = db.addDigitalTwinNode(req.body);
+  broadcastRealtimeEvent('DIGITAL_TWIN_NODE_ADDED', node);
+  res.status(201).json(node);
+});
+
+app.put('/api/digital-twin/nodes/:id', authenticate, (req: AuthenticatedRequest, res) => {
+  const updated = db.updateDigitalTwinNode(req.params.id, req.body);
+  if (!updated) {
+    res.status(404).json({ error: 'Digital twin node not found' });
+    return;
+  }
+  broadcastRealtimeEvent('DIGITAL_TWIN_NODE_UPDATED', updated);
+  res.json(updated);
+});
+
+app.delete('/api/digital-twin/nodes/:id', authenticate, (req: AuthenticatedRequest, res) => {
+  const success = db.deleteDigitalTwinNode(req.params.id);
+  if (!success) {
+    res.status(404).json({ error: 'Digital twin node not found' });
+    return;
+  }
+  broadcastRealtimeEvent('DIGITAL_TWIN_NODE_DELETED', { id: req.params.id });
+  res.json({ success: true });
 });
 
 // Facilities & Maintenance
@@ -851,6 +1246,141 @@ app.post('/api/data/import', authenticate, requireRole(['SYSTEM_OWNER', 'ADMINIS
 
 app.get('/api/data/export', authenticate, requireRole(['SYSTEM_OWNER', 'ADMINISTRATOR', 'MANAGEMENT']), (req, res) => {
   res.json(db.getRaw());
+});
+
+// Assignments & Academic Evaluations
+app.get('/api/assignments', (req, res) => {
+  res.json(db.getAssignments());
+});
+
+app.post('/api/assignments', authenticate, requireRole(['SYSTEM_OWNER', 'ADMINISTRATOR', 'FACULTY']), (req: AuthenticatedRequest, res) => {
+  const assignment = db.addAssignment({
+    ...req.body,
+    authorFacultyId: req.user!.id,
+  });
+  broadcastRealtimeEvent('ASSIGNMENT_CREATED', assignment);
+  res.status(201).json(assignment);
+});
+
+// Examinations & Results
+app.get('/api/examinations', (req, res) => {
+  res.json(db.getExaminations());
+});
+
+app.get('/api/exam-schedules', (req, res) => {
+  res.json(db.getExamSchedules());
+});
+
+app.get('/api/results', (req, res) => {
+  res.json(db.getResults());
+});
+
+// Surveys & Institutional Feedback (Anonymous vs Identified)
+app.get('/api/surveys', (req, res) => {
+  res.json(db.getSurveys());
+});
+
+app.post('/api/surveys', authenticate, requireRole(['SYSTEM_OWNER', 'ADMINISTRATOR', 'FACULTY']), (req: AuthenticatedRequest, res) => {
+  const survey = db.addSurvey({
+    ...req.body,
+    authorId: req.user!.id,
+    authorName: req.user!.fullName,
+  });
+  broadcastRealtimeEvent('SURVEY_CREATED', survey);
+  res.status(201).json(survey);
+});
+
+app.post('/api/surveys/:id/respond', authenticate, (req: AuthenticatedRequest, res) => {
+  const success = db.respondSurvey(req.params.id, {
+    ...req.body,
+    respondentRole: req.user!.role,
+    respondentUserId: req.user!.id,
+  });
+  if (!success) {
+    res.status(404).json({ error: 'Survey not found or closed.' });
+    return;
+  }
+  res.json({ success: true, message: 'Response registered.' });
+});
+
+// Confidential Whistleblower & Grievance Reporting
+app.get('/api/confidential-reports', authenticate, (req: AuthenticatedRequest, res) => {
+  const allReports = db.getConfidentialReports();
+  const isOwner = req.user!.role === 'SYSTEM_OWNER';
+
+  if (isOwner) {
+    // Return all reports; if not revealed, mask identity fields
+    const masked = allReports.map((r) => {
+      if (r.reporterRevealed) return r;
+      return {
+        ...r,
+        reporterName: '• Protected by CUOIS Encryption •',
+        reporterUserId: 'ENCRYPTED_HASH',
+      };
+    });
+    res.json(masked);
+  } else {
+    // Non-owners can only see reports they themselves submitted
+    const mine = allReports.filter((r) => r.reporterUserId === req.user!.id);
+    res.json(mine);
+  }
+});
+
+app.post('/api/confidential-reports', authenticate, (req: AuthenticatedRequest, res) => {
+  const report = db.addConfidentialReport({
+    ...req.body,
+    reporterUserId: req.user!.id,
+    reporterName: req.user!.fullName,
+    reporterRole: req.user!.role,
+    status: 'SUBMITTED',
+  });
+
+  db.logAudit({
+    actorId: req.user!.id,
+    actorName: req.user!.fullName,
+    actorRole: req.user!.role,
+    action: 'CONFIDENTIAL_REPORT_SUBMITTED',
+    entity: 'ConfidentialReport',
+    entityId: report.id,
+    newValue: JSON.stringify({ ticketCode: report.ticketCode, category: report.category }),
+    ipAddress: req.ip || '127.0.0.1',
+  });
+
+  broadcastRealtimeEvent('CONFIDENTIAL_REPORT_SUBMITTED', { id: report.id, ticketCode: report.ticketCode });
+  res.status(201).json(report);
+});
+
+app.post('/api/confidential-reports/:id/reveal', authenticate, requireRole(['SYSTEM_OWNER']), (req: AuthenticatedRequest, res) => {
+  const { reason } = req.body;
+  if (!reason || reason.trim().length < 10) {
+    res.status(400).json({ error: 'A valid institutional justification (min 10 characters) is required to decrypt reporter identity.' });
+    return;
+  }
+
+  const updated = db.revealConfidentialReport(req.params.id, `${req.user!.fullName} (${req.user!.email})`);
+  if (!updated) {
+    res.status(404).json({ error: 'Report not found' });
+    return;
+  }
+
+  db.logAudit({
+    actorId: req.user!.id,
+    actorName: req.user!.fullName,
+    actorRole: req.user!.role,
+    action: 'CONFIDENTIAL_REPORTER_DECRYPTED',
+    entity: 'ConfidentialReport',
+    entityId: updated.id,
+    reason: reason,
+    newValue: JSON.stringify({ ticketCode: updated.ticketCode, reporterId: updated.reporterUserId }),
+    ipAddress: req.ip || '127.0.0.1',
+  });
+
+  res.json(updated);
+});
+
+// Early-Warning Student Academic Risk Intelligence
+app.get('/api/academic-risk/students', authenticate, requireRole(['SYSTEM_OWNER', 'ADMINISTRATOR', 'FACULTY']), (req, res) => {
+  res.json(db.getStudentRiskIndicators());
 });
 
 // -------------------------------------------------------------

@@ -16,6 +16,14 @@ import {
   Save,
   RotateCcw,
   Sparkles,
+  Edit3,
+  Trash2,
+  Search,
+  Eye,
+  EyeOff,
+  Phone,
+  Building,
+  Fingerprint,
 } from 'lucide-react';
 import { api } from '../../lib/api.ts';
 import { useAuth } from '../../lib/auth-context.tsx';
@@ -91,33 +99,61 @@ const PERMISSION_GROUPS: { category: string; permissions: PermissionItem[] }[] =
   },
 ];
 
-export const UsersRbacView: React.FC = () => {
-  const { user, activeRole, refreshState } = useAuth();
+interface UsersRbacViewProps {
+  onNavigate?: (view: any) => void;
+}
+
+export const UsersRbacView: React.FC<UsersRbacViewProps> = ({ onNavigate }) => {
+  const { user: currentUser, activeRole, refreshState } = useAuth();
   const [activeTab, setActiveTab] = useState<'users' | 'matrix'>('users');
   const [users, setUsers] = useState<UserType[]>([]);
   const [roles, setRoles] = useState<RoleDefinition[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState<string>('ALL');
 
-  // System Owner permission matrix editor state
-  const isSystemOwner = activeRole === 'SYSTEM_OWNER';
+  // System Owner status check
+  const isSystemOwner = activeRole === 'SYSTEM_OWNER' || currentUser?.username?.toUpperCase() === 'IMTHIYAS';
+
+  // Permission matrix state
   const [selectedRoleCode, setSelectedRoleCode] = useState<string>('ADMINISTRATOR');
   const [activeRolePerms, setActiveRolePerms] = useState<string[]>([]);
   const [isSavingPerms, setIsSavingPerms] = useState(false);
   const [matrixSaveSuccess, setMatrixSaveSuccess] = useState(false);
 
-  // Add User Modal
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('Cuois@2025');
-  const [role, setRole] = useState<UserRole>('STUDENT');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Add Member Modal State
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [addFullName, setAddFullName] = useState('');
+  const [addUsername, setAddUsername] = useState('');
+  const [addEmail, setAddEmail] = useState('');
+  const [addPassword, setAddPassword] = useState('');
+  const [addRole, setAddRole] = useState<UserRole>('STUDENT');
+  const [addPhone, setAddPhone] = useState('');
+  const [addBio, setAddBio] = useState('');
+  const [isSubmittingAdd, setIsSubmittingAdd] = useState(false);
 
-  // Edit Position Modal (System Owner sovereignty)
+  // Edit Member Modal State
   const [editingUser, setEditingUser] = useState<UserType | null>(null);
-  const [newRoleForUser, setNewRoleForUser] = useState<UserRole>('STUDENT');
-  const [isSavingUserRole, setIsSavingUserRole] = useState(false);
+  const [editFullName, setEditFullName] = useState('');
+  const [editUsername, setEditUsername] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editRole, setEditRole] = useState<UserRole>('STUDENT');
+  const [editPhone, setEditPhone] = useState('');
+  const [editBio, setEditBio] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  // Reset Password Modal State
+  const [resettingUser, setResettingUser] = useState<UserType | null>(null);
+  const [newPasswordForUser, setNewPasswordForUser] = useState('');
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [isSubmittingReset, setIsSubmittingReset] = useState(false);
+
+  // Delete User Confirmation Modal State
+  const [deletingUser, setDeletingUser] = useState<UserType | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Status banners
+  const [actionNotice, setActionNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const loadData = async () => {
     try {
@@ -135,7 +171,6 @@ export const UsersRbacView: React.FC = () => {
     loadData();
   }, []);
 
-  // Update activeRolePerms when selectedRoleCode changes or roles load
   useEffect(() => {
     const r = roles.find((item) => item.code === selectedRoleCode);
     if (r) {
@@ -143,51 +178,163 @@ export const UsersRbacView: React.FC = () => {
     }
   }, [selectedRoleCode, roles]);
 
+  const showNotice = (type: 'success' | 'error', text: string) => {
+    setActionNotice({ type, text });
+    setTimeout(() => setActionNotice(null), 4000);
+  };
+
+  // 1. Create User
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
+    if (!addUsername.trim() || !addPassword.trim() || !addFullName.trim()) {
+      showNotice('error', 'Member ID, Initial Password, and Full Name are compulsory.');
+      return;
+    }
+
+    setIsSubmittingAdd(true);
     try {
       await api.createUser({
-        fullName,
-        email,
-        username: username || email.split('@')[0],
-        password,
-        role,
+        fullName: addFullName.trim(),
+        username: addUsername.trim(),
+        email: addEmail.trim() || `${addUsername.trim().toLowerCase()}@campus.edu`,
+        password: addPassword.trim(),
+        role: addRole,
+        phone: addPhone.trim(),
+        bio: addBio.trim(),
         isActive: true,
       });
-      setIsModalOpen(false);
-      setFullName('');
-      setEmail('');
-      setUsername('');
+      setIsAddModalOpen(false);
+      setAddFullName('');
+      setAddUsername('');
+      setAddEmail('');
+      setAddPassword('');
+      setAddPhone('');
+      setAddBio('');
       await loadData();
+      showNotice('success', `Member account successfully created with ID: ${addUsername.trim()}`);
     } catch (err: any) {
-      alert(err.message || 'Failed to create user');
+      showNotice('error', err.message || 'Failed to create user account');
     } finally {
-      setIsSubmitting(false);
+      setIsSubmittingAdd(false);
     }
   };
 
+  // 2. Open Edit User
+  const handleOpenEdit = (u: UserType) => {
+    setEditingUser(u);
+    setEditFullName(u.fullName || '');
+    setEditUsername(u.username || '');
+    setEditEmail(u.email || '');
+    setEditRole(u.role);
+    setEditPhone(u.phone || '');
+    setEditBio(u.bio || '');
+  };
+
+  // Save Edited User
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    if (!editFullName.trim() || !editUsername.trim()) {
+      showNotice('error', 'Full Name and Member ID cannot be empty.');
+      return;
+    }
+
+    setIsSavingEdit(true);
+    try {
+      await api.updateUser(editingUser.id, {
+        fullName: editFullName.trim(),
+        username: editUsername.trim(),
+        email: editEmail.trim(),
+        role: editRole,
+        phone: editPhone.trim(),
+        bio: editBio.trim(),
+      });
+      setEditingUser(null);
+      await loadData();
+      await refreshState();
+      showNotice('success', `Account ${editUsername.trim()} updated successfully.`);
+    } catch (err: any) {
+      showNotice('error', err.message || 'Failed to update user account');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  // 3. Reset Password for User
+  const handleOpenResetPassword = (u: UserType) => {
+    setResettingUser(u);
+    setNewPasswordForUser('');
+    setShowResetPassword(false);
+  };
+
+  const handleConfirmResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resettingUser) return;
+    if (!newPasswordForUser.trim() || newPasswordForUser.length < 6) {
+      showNotice('error', 'New password must be at least 6 characters long.');
+      return;
+    }
+
+    setIsSubmittingReset(true);
+    try {
+      await api.resetUserPassword(resettingUser.id, newPasswordForUser.trim());
+      setResettingUser(null);
+      showNotice('success', `Password for member ID ${resettingUser.username || resettingUser.id} was successfully changed.`);
+    } catch (err: any) {
+      showNotice('error', err.message || 'Failed to reset user password');
+    } finally {
+      setIsSubmittingReset(false);
+    }
+  };
+
+  // 4. Delete User
+  const handleOpenDelete = (u: UserType) => {
+    if (u.role === 'SYSTEM_OWNER' || u.username?.toUpperCase() === 'IMTHIYAS') {
+      showNotice('error', 'The Sovereign System Owner account is strictly protected and cannot be deleted.');
+      return;
+    }
+    setDeletingUser(u);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingUser) return;
+    setIsDeleting(true);
+    try {
+      await api.deleteUser(deletingUser.id);
+      showNotice('success', `Account for ${deletingUser.fullName} (${deletingUser.username}) permanently deleted.`);
+      setDeletingUser(null);
+      await loadData();
+      await refreshState();
+    } catch (err: any) {
+      showNotice('error', err.message || 'Failed to delete user account');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // 5. Toggle Active / Deactivate
   const handleToggleActive = async (targetUser: UserType) => {
-    if (targetUser.role === 'SYSTEM_OWNER') {
-      alert('Cannot deactivate System Owner');
+    if (targetUser.role === 'SYSTEM_OWNER' || targetUser.username?.toUpperCase() === 'IMTHIYAS') {
+      showNotice('error', 'Cannot deactivate the Sovereign System Owner account.');
       return;
     }
     try {
       await api.updateUser(targetUser.id, { isActive: !targetUser.isActive });
       await loadData();
+      showNotice('success', `Account status toggled for ${targetUser.fullName}.`);
     } catch (err: any) {
-      alert(err.message || 'Failed to update user status');
+      showNotice('error', err.message || 'Failed to update user status');
     }
   };
 
-  // Matrix Permission toggle
+  // Permission Matrix Handlers
   const handleTogglePerm = (permCode: string) => {
     if (!isSystemOwner) {
-      alert('Access Restricted: Only the System Owner can modify role permissions.');
+      showNotice('error', 'Access Restricted: Only the System Owner can modify role permissions.');
       return;
     }
     if (selectedRoleCode === 'SYSTEM_OWNER') {
-      alert('System Owner role inherently retains unrestricted root permissions (*).');
+      showNotice('error', 'System Owner role inherently retains unrestricted root permissions (*).');
       return;
     }
 
@@ -201,22 +348,19 @@ export const UsersRbacView: React.FC = () => {
   };
 
   const handleSelectAllCategory = (permissions: PermissionItem[]) => {
-    if (!isSystemOwner) return;
-    if (selectedRoleCode === 'SYSTEM_OWNER') return;
+    if (!isSystemOwner || selectedRoleCode === 'SYSTEM_OWNER') return;
     const codes = permissions.map((p) => p.code);
     setActiveRolePerms((prev) => Array.from(new Set([...prev, ...codes])));
   };
 
   const handleClearCategory = (permissions: PermissionItem[]) => {
-    if (!isSystemOwner) return;
-    if (selectedRoleCode === 'SYSTEM_OWNER') return;
+    if (!isSystemOwner || selectedRoleCode === 'SYSTEM_OWNER') return;
     const codes = new Set(permissions.map((p) => p.code));
     setActiveRolePerms((prev) => prev.filter((p) => !codes.has(p)));
   };
 
   const handleGrantFullAccess = () => {
-    if (!isSystemOwner) return;
-    if (selectedRoleCode === 'SYSTEM_OWNER') return;
+    if (!isSystemOwner || selectedRoleCode === 'SYSTEM_OWNER') return;
     const allCodes = PERMISSION_GROUPS.flatMap((g) => g.permissions.map((p) => p.code));
     setActiveRolePerms(allCodes);
   };
@@ -231,7 +375,7 @@ export const UsersRbacView: React.FC = () => {
 
   const handleSaveRolePermissions = async () => {
     if (!isSystemOwner) {
-      alert('Access Restricted: Only the System Owner can save position access policies.');
+      showNotice('error', 'Access Restricted: Only the System Owner can save position access policies.');
       return;
     }
     setIsSavingPerms(true);
@@ -243,7 +387,7 @@ export const UsersRbacView: React.FC = () => {
       await refreshState();
       setTimeout(() => setMatrixSaveSuccess(false), 3500);
     } catch (err: any) {
-      alert(err.message || 'Failed to update role permissions');
+      showNotice('error', err.message || 'Failed to update role permissions');
     } finally {
       setIsSavingPerms(false);
     }
@@ -261,28 +405,33 @@ export const UsersRbacView: React.FC = () => {
     CUSTOM: 'neutral',
   };
 
-  const handleOpenEditUserRole = (u: UserType) => {
-    setEditingUser(u);
-    setNewRoleForUser(u.role);
-  };
-
-  const handleSaveUserRole = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingUser) return;
-    setIsSavingUserRole(true);
-    try {
-      await api.updateUser(editingUser.id, { role: newRoleForUser });
-      setEditingUser(null);
-      await loadData();
-      await refreshState();
-    } catch (err: any) {
-      alert(err.message || 'Failed to update user position');
-    } finally {
-      setIsSavingUserRole(false);
-    }
-  };
+  // Filter users by search and role
+  const filteredUsers = users.filter((u) => {
+    const matchesSearch =
+      (u.fullName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (u.username || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (u.email || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (u.phone || '').toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesRole = roleFilter === 'ALL' || u.role === roleFilter;
+    return matchesSearch && matchesRole;
+  });
 
   const userColumns = [
+    {
+      key: 'username',
+      header: 'Member ID',
+      render: (u: UserType) => (
+        <div className="flex items-center gap-1.5 font-mono text-xs">
+          <Fingerprint className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+          <span className="font-bold text-cyan-300">{u.username || u.id}</span>
+          {u.username?.toUpperCase() === 'IMTHIYAS' && (
+            <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold">
+              OWNER
+            </span>
+          )}
+        </div>
+      ),
+    },
     {
       key: 'fullName',
       header: 'Full Name & Email',
@@ -294,13 +443,13 @@ export const UsersRbacView: React.FC = () => {
               <span className="text-[10px] text-amber-400 font-mono font-bold">★ ROOT SOVEREIGN</span>
             )}
           </div>
-          <div className="text-[11px] text-slate-400">{u.email}</div>
+          <div className="text-[11px] text-slate-400 font-mono">{u.email}</div>
         </div>
       ),
     },
     {
       key: 'role',
-      header: 'Assigned Position',
+      header: 'Position / Role',
       render: (u: UserType) => (
         <Badge variant={roleColors[u.role] || 'neutral'} size="sm">
           {u.role.replace('_', ' ')}
@@ -309,7 +458,7 @@ export const UsersRbacView: React.FC = () => {
     },
     {
       key: 'isActive',
-      header: 'Account Status',
+      header: 'Status',
       render: (u: UserType) => (
         <Badge variant={u.isActive ? 'success' : 'danger'} size="sm" dot>
           {u.isActive ? 'ACTIVE' : 'DEACTIVATED'}
@@ -318,10 +467,10 @@ export const UsersRbacView: React.FC = () => {
     },
     {
       key: 'lastLoginAt',
-      header: 'Last Authentication',
+      header: 'Last Sign In',
       render: (u: UserType) => (
         <span className="text-xs text-slate-400 font-mono">
-          {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'Never'}
+          {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleDateString() : 'Never'}
         </span>
       ),
     },
@@ -330,24 +479,53 @@ export const UsersRbacView: React.FC = () => {
       header: 'Actions',
       align: 'right' as const,
       render: (u: UserType) => (
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex items-center justify-end gap-1.5">
+          {/* Edit / Modify User */}
           {isSystemOwner && (
             <Button
               size="sm"
               variant="outline"
-              onClick={() => handleOpenEditUserRole(u)}
+              icon={Edit3}
+              onClick={() => handleOpenEdit(u)}
+              title="Edit Member ID, Name, Email, or Role"
             >
-              Change Position
+              Edit
             </Button>
           )}
-          {u.role !== 'SYSTEM_OWNER' && isSystemOwner && (
+
+          {/* Reset Password */}
+          {isSystemOwner && (
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={Key}
+              onClick={() => handleOpenResetPassword(u)}
+              title="Set new password for this Member ID"
+            >
+              Password
+            </Button>
+          )}
+
+          {/* Deactivate/Reactivate toggle */}
+          {u.role !== 'SYSTEM_OWNER' && u.username?.toUpperCase() !== 'IMTHIYAS' && isSystemOwner && (
             <Button
               size="sm"
               variant={u.isActive ? 'ghost' : 'secondary'}
               onClick={() => handleToggleActive(u)}
             >
-              {u.isActive ? 'Deactivate' : 'Reactivate'}
+              {u.isActive ? 'Suspend' : 'Activate'}
             </Button>
+          )}
+
+          {/* Delete User */}
+          {u.role !== 'SYSTEM_OWNER' && u.username?.toUpperCase() !== 'IMTHIYAS' && isSystemOwner && (
+            <Button
+              size="sm"
+              variant="danger"
+              icon={Trash2}
+              onClick={() => handleOpenDelete(u)}
+              title="Permanently remove member"
+            />
           )}
         </div>
       ),
@@ -359,22 +537,22 @@ export const UsersRbacView: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Sovereign Authority Banner */}
-      <div className="p-4 rounded-2xl bg-gradient-to-r from-[#0E1524] via-[#10192D] to-[#0A101C] border border-cyan-500/30 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="p-5 rounded-2xl bg-gradient-to-r from-[#0E1524] via-[#10192D] to-[#0A101C] border border-cyan-500/30 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center shrink-0">
-            <ShieldCheck className="w-5 h-5 text-cyan-400" />
+          <div className="w-11 h-11 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center shrink-0">
+            <ShieldCheck className="w-6 h-6 text-cyan-400" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-semibold text-slate-100 font-serif">
-                System Owner Sovereign Access Architecture
+                System Owner Sovereign ID & Credential Governance
               </h2>
               <Badge variant={isSystemOwner ? 'accent' : 'warning'} size="sm">
                 {isSystemOwner ? 'ROOT PRIVILEGES ACTIVE' : 'READ-ONLY MATRIX'}
               </Badge>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Only the System Owner holds root authority (<code className="text-cyan-300 font-mono">*</code>) and can allocate, restrict, or revoke permissions across all campus positions.
+              System Owner (Imthiyas) possesses full governance to create, delete, add, modify, and set passwords for every member ID.
             </p>
           </div>
         </div>
@@ -398,396 +576,564 @@ export const UsersRbacView: React.FC = () => {
         </div>
       </div>
 
-      {/* Tab 1: User Directory */}
+      {/* Global Status Banner */}
+      {actionNotice && (
+        <div
+          className={`p-3.5 rounded-xl border flex items-center gap-2.5 text-xs font-mono transition-all ${
+            actionNotice.type === 'success'
+              ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+              : 'bg-rose-950/60 border-rose-500/40 text-rose-300'
+          }`}
+        >
+          {actionNotice.type === 'success' ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          ) : (
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+          )}
+          <span>{actionNotice.text}</span>
+        </div>
+      )}
+
+      {/* Tab 1: User Directory & Credential Management */}
       {activeTab === 'users' && (
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-xl font-serif font-bold text-slate-100 flex items-center gap-2">
                 <UserCheck className="w-5 h-5 text-cyan-400" />
-                Institutional User Directory
+                Institutional Member Directory
               </h1>
               <p className="text-xs text-slate-400 mt-0.5">
-                Active credential holders, PBKDF2 authentication records, and assigned operational roles.
+                Every member has a compulsory Member ID and Password created and maintained by System Owner Imthiyas.
               </p>
             </div>
             {isSystemOwner && (
-              <Button variant="primary" size="sm" icon={Plus} onClick={() => setIsModalOpen(true)}>
-                Provision User Account
+              <Button
+                variant="primary"
+                size="sm"
+                icon={Plus}
+                onClick={() => setIsAddModalOpen(true)}
+              >
+                Create New Member Account
               </Button>
             )}
           </div>
 
-          {/* Quick stats */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* Search & Filter Bar */}
+          <div className="flex flex-col sm:flex-row items-center gap-3 bg-[#0A101C] p-3 rounded-xl border border-slate-800">
+            <div className="relative flex-1 w-full">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by Member ID, Full Name, Email, or Phone..."
+                className="w-full bg-[#0E1524] border border-slate-700 focus:border-cyan-500 rounded-lg pl-9 pr-4 py-2 text-xs text-slate-100 placeholder:text-slate-500 outline-none"
+              />
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                className="bg-[#0E1524] border border-slate-700 focus:border-cyan-500 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none w-full sm:w-auto"
+              >
+                <option value="ALL">All Roles ({users.length})</option>
+                {roles.map((r) => (
+                  <option key={r.code} value={r.code}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Quick Stats Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
             {roles.map((r) => {
               const count = users.filter((u) => u.role === r.code).length;
               return (
                 <div
                   key={r.code}
-                  onClick={() => {
-                    setSelectedRoleCode(r.code);
-                    setActiveTab('matrix');
-                  }}
-                  className="p-3.5 rounded-xl bg-[#0A101C] hover:bg-[#0E1524] border border-slate-800 hover:border-slate-700 cursor-pointer transition-all space-y-1"
+                  onClick={() => setRoleFilter(r.code)}
+                  className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                    roleFilter === r.code
+                      ? 'bg-cyan-950/40 border-cyan-500/80 ring-1 ring-cyan-500/50'
+                      : 'bg-[#0A101C] hover:bg-[#0E1524] border-slate-800'
+                  }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-slate-200">{r.name}</span>
-                    <Badge variant={roleColors[r.code as UserRole] || 'neutral'} size="sm">
-                      {count} Users
-                    </Badge>
-                  </div>
-                  <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
-                    {r.permissions.length} active permissions • Click to inspect matrix
-                  </p>
+                  <div className="text-[11px] font-semibold text-slate-200 truncate">{r.name}</div>
+                  <div className="text-base font-bold text-cyan-400 mt-1">{count}</div>
                 </div>
               );
             })}
           </div>
 
           {/* Table */}
-          <Table columns={userColumns} data={users} keyExtractor={(u) => u.id} isLoading={isLoading} />
+          <Table
+            columns={userColumns}
+            data={filteredUsers}
+            keyExtractor={(u) => u.id}
+            isLoading={isLoading}
+          />
         </div>
       )}
 
-      {/* Tab 2: Position Permissions Matrix Configurator */}
+      {/* Tab 2: Role Permissions Matrix */}
       {activeTab === 'matrix' && (
         <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-xl font-serif font-bold text-slate-100 flex items-center gap-2">
                 <Sliders className="w-5 h-5 text-cyan-400" />
-                Position Access Control & Permissions Matrix
+                Role Permissions Architecture
               </h1>
               <p className="text-xs text-slate-400 mt-0.5">
-                Configure granular functional capabilities for each campus position. All changes are enforced in real-time.
+                Configure fine-grained operational access across roles.
               </p>
             </div>
 
             {isSystemOwner && (
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  icon={RotateCcw}
-                  onClick={handleResetToDefault}
-                  disabled={selectedRoleCode === 'SYSTEM_OWNER'}
-                >
-                  Reset
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  icon={Save}
-                  isLoading={isSavingPerms}
-                  onClick={handleSaveRolePermissions}
-                  disabled={selectedRoleCode === 'SYSTEM_OWNER'}
-                >
-                  Save Access Policy
-                </Button>
-              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={Save}
+                isLoading={isSavingPerms}
+                onClick={handleSaveRolePermissions}
+              >
+                Save Permissions
+              </Button>
             )}
           </div>
 
           {matrixSaveSuccess && (
-            <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>
-                Access policy for <strong>{currentRoleDef?.name}</strong> successfully updated and enforced system-wide.
-              </span>
+            <div className="p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <span>Role permissions matrix updated successfully across all campus nodes.</span>
             </div>
           )}
 
-          {/* Role selector pills */}
-          <div className="flex flex-wrap items-center gap-2 p-1.5 rounded-xl bg-[#0A101C] border border-slate-800">
-            {roles.map((r) => {
-              const isSelected = selectedRoleCode === r.code;
-              return (
-                <button
-                  key={r.code}
-                  type="button"
-                  onClick={() => setSelectedRoleCode(r.code)}
-                  className={`px-3.5 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2 ${
-                    isSelected
-                      ? 'bg-cyan-600/30 border border-cyan-500/50 text-cyan-200 shadow-md'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <span>{r.name}</span>
-                  {r.code === 'SYSTEM_OWNER' ? (
-                    <span className="text-[10px] font-mono text-amber-400 font-bold">ROOT</span>
-                  ) : (
-                    <span className="text-[10px] font-mono opacity-70">
-                      ({r.permissions.length})
-                    </span>
+          {/* Role selector tabs */}
+          <div className="flex flex-wrap gap-2">
+            {roles.map((r) => (
+              <button
+                key={r.code}
+                onClick={() => setSelectedRoleCode(r.code)}
+                className={`px-3 py-2 rounded-xl text-xs font-medium transition-all ${
+                  selectedRoleCode === r.code
+                    ? 'bg-cyan-500/20 border border-cyan-500/60 text-cyan-300 font-semibold'
+                    : 'bg-[#0A101C] hover:bg-[#0E1524] border border-slate-800 text-slate-400'
+                }`}
+              >
+                {r.name}
+              </button>
+            ))}
+          </div>
+
+          {/* Permission groups */}
+          <div className="space-y-4">
+            {PERMISSION_GROUPS.map((group) => (
+              <div key={group.category} className="p-4 rounded-xl bg-[#0A101C] border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider font-mono">
+                    {group.category}
+                  </h3>
+                  {isSystemOwner && selectedRoleCode !== 'SYSTEM_OWNER' && (
+                    <div className="flex items-center gap-2 text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectAllCategory(group.permissions)}
+                        className="text-cyan-400 hover:text-cyan-300"
+                      >
+                        Select All
+                      </button>
+                      <span className="text-slate-600">•</span>
+                      <button
+                        type="button"
+                        onClick={() => handleClearCategory(group.permissions)}
+                        className="text-slate-400 hover:text-slate-300"
+                      >
+                        Clear
+                      </button>
+                    </div>
                   )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Active Role Meta Card */}
-          <div className="p-4 rounded-xl bg-[#0A101C] border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-mono text-cyan-400 uppercase tracking-wider">
-                  Target Position:
-                </span>
-                <span className="text-sm font-bold text-slate-100">{currentRoleDef?.name}</span>
-                <Badge variant={roleColors[selectedRoleCode as UserRole] || 'neutral'} size="sm">
-                  {selectedRoleCode}
-                </Badge>
-              </div>
-              <p className="text-xs text-slate-400">{currentRoleDef?.description}</p>
-            </div>
-
-            {selectedRoleCode !== 'SYSTEM_OWNER' && isSystemOwner && (
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" onClick={handleGrantFullAccess}>
-                  Grant Full Access
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* If System Owner is selected */}
-          {selectedRoleCode === 'SYSTEM_OWNER' ? (
-            <div className="p-8 rounded-2xl bg-[#0A101C] border border-amber-500/30 text-center space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto">
-                <Lock className="w-6 h-6 text-amber-400" />
-              </div>
-              <h3 className="text-base font-serif font-bold text-slate-100">
-                System Owner Root Sovereignty
-              </h3>
-              <p className="text-xs text-slate-400 max-w-lg mx-auto leading-relaxed">
-                The System Owner position possesses universal root privileges (<code className="text-amber-400 font-mono">*</code>) across every subsystem, API, and database entity. Root privileges cannot be modified or degraded to prevent institutional lockout.
-              </p>
-            </div>
-          ) : (
-            /* Permission Groups Grid */
-            <div className="space-y-6">
-              {PERMISSION_GROUPS.map((group) => {
-                const activeInGroupCount = group.permissions.filter((p) =>
-                  activeRolePerms.includes(p.code)
-                ).length;
-                return (
-                  <div
-                    key={group.category}
-                    className="p-5 rounded-2xl bg-[#0A101C] border border-slate-800 space-y-4"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800/80">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-semibold text-slate-200">{group.category}</h3>
-                        <Badge variant="info" size="sm">
-                          {activeInGroupCount} / {group.permissions.length} Enabled
-                        </Badge>
-                      </div>
-
-                      {isSystemOwner && (
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleSelectAllCategory(group.permissions)}
-                            className="text-[11px] text-cyan-400 hover:text-cyan-300 font-mono"
-                          >
-                            Select All
-                          </button>
-                          <span className="text-slate-700">|</span>
-                          <button
-                            type="button"
-                            onClick={() => handleClearCategory(group.permissions)}
-                            className="text-[11px] text-slate-400 hover:text-slate-200 font-mono"
-                          >
-                            Clear
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {group.permissions.map((perm) => {
-                        const isChecked = activeRolePerms.includes(perm.code);
-                        return (
-                          <div
-                            key={perm.code}
-                            onClick={() => isSystemOwner && handleTogglePerm(perm.code)}
-                            className={`p-3.5 rounded-xl border transition-all ${
-                              isSystemOwner ? 'cursor-pointer' : 'cursor-default'
-                            } ${
-                              isChecked
-                                ? 'bg-cyan-950/20 border-cyan-500/50 text-cyan-200 shadow-sm'
-                                : 'bg-[#0E1524] border-slate-800 text-slate-400 hover:border-slate-700'
-                            }`}
-                          >
-                            <div className="flex items-start gap-3">
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={() => isSystemOwner && handleTogglePerm(perm.code)}
-                                disabled={!isSystemOwner}
-                                className="mt-0.5 rounded border-slate-700 text-cyan-500 focus:ring-cyan-400"
-                              />
-                              <div className="space-y-1">
-                                <div className="text-xs font-semibold text-slate-200 flex items-center justify-between">
-                                  <span>{perm.label}</span>
-                                </div>
-                                <div className="text-[10px] font-mono text-cyan-400/80">
-                                  {perm.code}
-                                </div>
-                                <p className="text-[11px] text-slate-400 leading-relaxed">
-                                  {perm.description}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* Bottom Sticky Save Bar for System Owner */}
-              {isSystemOwner && (
-                <div className="p-4 rounded-xl bg-[#0E1524] border border-cyan-500/40 flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-2 text-xs text-slate-300">
-                    <Info className="w-4 h-4 text-cyan-400 shrink-0" />
-                    <span>
-                      Saving will enforce {activeRolePerms.length} capabilities for{' '}
-                      <strong>{currentRoleDef?.name}</strong>.
-                    </span>
-                  </div>
-                  <Button
-                    variant="primary"
-                    size="md"
-                    icon={Save}
-                    isLoading={isSavingPerms}
-                    onClick={handleSaveRolePermissions}
-                  >
-                    Save Access Policy
-                  </Button>
                 </div>
-              )}
-            </div>
-          )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {group.permissions.map((p) => {
+                    const isChecked =
+                      selectedRoleCode === 'SYSTEM_OWNER' || activeRolePerms.includes(p.code);
+                    return (
+                      <div
+                        key={p.code}
+                        onClick={() => handleTogglePerm(p.code)}
+                        className={`p-2.5 rounded-lg border text-xs cursor-pointer transition-all flex items-start gap-2.5 ${
+                          isChecked
+                            ? 'bg-cyan-950/40 border-cyan-500/50 text-slate-200'
+                            : 'bg-[#0E1524] border-slate-800 text-slate-400 hover:border-slate-700'
+                        }`}
+                      >
+                        <div
+                          className={`w-4 h-4 rounded mt-0.5 flex items-center justify-center shrink-0 text-[10px] font-bold ${
+                            isChecked
+                              ? 'bg-cyan-500 text-slate-950'
+                              : 'border border-slate-700 bg-[#0A101C]'
+                          }`}
+                        >
+                          {isChecked && '✓'}
+                        </div>
+                        <div>
+                          <div className="font-semibold">{p.label}</div>
+                          <div className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">
+                            {p.description}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* Add User Modal */}
+      {/* 1. Modal: Create / Provision New Member */}
       <Modal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title="Provision User Account"
-        subtitle="Registers user credentials and binds security roles"
-        maxWidth="md"
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        title="Provision New Campus Member"
+        subtitle="System Owner Governance: Create a compulsory Member ID and Password"
+        maxWidth="lg"
       >
         <form onSubmit={handleCreateUser} className="space-y-4">
-          <Input
-            label="Full Name"
-            required
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            placeholder="e.g. Dr. Jordan Bell"
-          />
+          <div className="p-3 rounded-xl bg-cyan-950/40 border border-cyan-500/30 text-xs text-cyan-300 flex items-center gap-2">
+            <Sparkles className="w-4 h-4 shrink-0 text-cyan-400" />
+            <span>Compulsory access credentials created here allow members to enter CUOIS and the Digital Twin.</span>
+          </div>
 
-          <Input
-            label="Institutional Email"
-            required
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="jordan.bell@apexhorizon.edu"
-          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                Member ID / Username <span className="text-cyan-400">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={addUsername}
+                onChange={(e) => setAddUsername(e.target.value)}
+                placeholder="e.g. STU_2025_001 or FAC_JOHN"
+                className="w-full bg-[#0E1524] border border-slate-700 focus:border-cyan-500 rounded-xl px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none font-mono"
+              />
+              <p className="text-[10px] text-slate-500 mt-1">Unique campus identifier used at login.</p>
+            </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="e.g. jbell"
-            />
-            <Select
-              label="Assigned Role"
-              value={role}
-              onChange={(e) => setRole(e.target.value as UserRole)}
-              options={[
-                { value: 'ADMINISTRATOR', label: 'Administrator' },
-                { value: 'EDITOR', label: 'Editor / Content Publisher' },
-                { value: 'MANAGEMENT', label: 'Management' },
-                { value: 'FACULTY', label: 'Faculty' },
-                { value: 'STUDENT', label: 'Student' },
-                { value: 'SECURITY', label: 'Security Officer' },
-                { value: 'STAFF', label: 'Staff / Facilities' },
-              ]}
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                Initial Security Password <span className="text-cyan-400">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={addPassword}
+                onChange={(e) => setAddPassword(e.target.value)}
+                placeholder="e.g. SecurePass@2025"
+                className="w-full bg-[#0E1524] border border-slate-700 focus:border-cyan-500 rounded-xl px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none font-mono"
+              />
+              <p className="text-[10px] text-slate-500 mt-1">Member will use this password to enter.</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                Full Legal Name <span className="text-cyan-400">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={addFullName}
+                onChange={(e) => setAddFullName(e.target.value)}
+                placeholder="e.g. Dr. Alex Vance"
+                className="w-full bg-[#0E1524] border border-slate-700 focus:border-cyan-500 rounded-xl px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                Assigned Position / Role <span className="text-cyan-400">*</span>
+              </label>
+              <select
+                value={addRole}
+                onChange={(e) => setAddRole(e.target.value as UserRole)}
+                className="w-full bg-[#0E1524] border border-slate-700 focus:border-cyan-500 rounded-xl px-3.5 py-2 text-sm text-slate-100 outline-none"
+              >
+                <option value="STUDENT">Student</option>
+                <option value="FACULTY">Faculty / Professor</option>
+                <option value="ADMINISTRATOR">Administrator</option>
+                <option value="SECURITY">Campus Security</option>
+                <option value="STAFF">Staff / Operations</option>
+                <option value="MANAGEMENT">Management</option>
+                <option value="EDITOR">Editor</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                Institutional Email
+              </label>
+              <input
+                type="email"
+                value={addEmail}
+                onChange={(e) => setAddEmail(e.target.value)}
+                placeholder="name@campus.edu"
+                className="w-full bg-[#0E1524] border border-slate-700 focus:border-cyan-500 rounded-xl px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                Contact Phone
+              </label>
+              <input
+                type="tel"
+                value={addPhone}
+                onChange={(e) => setAddPhone(e.target.value)}
+                placeholder="+1 (555) 000-0000"
+                className="w-full bg-[#0E1524] border border-slate-700 focus:border-cyan-500 rounded-xl px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1.5">
+              Biography / Dossier Note
+            </label>
+            <textarea
+              rows={2}
+              value={addBio}
+              onChange={(e) => setAddBio(e.target.value)}
+              placeholder="Initial profile dossier notes..."
+              className="w-full bg-[#0E1524] border border-slate-700 focus:border-cyan-500 rounded-xl px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none"
             />
           </div>
 
-          <Input
-            label="Initial Access Passcode"
-            required
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            helperText="Encrypted via cryptographic PBKDF2 with unique salt."
-          />
-
           <div className="pt-4 border-t border-slate-800 flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => setIsAddModalOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" variant="primary" isLoading={isSubmitting}>
-              Provision Account
+            <Button type="submit" variant="primary" isLoading={isSubmittingAdd}>
+              Provision Member ID & Password
             </Button>
           </div>
         </form>
       </Modal>
 
-      {/* Edit User Position Modal (System Owner Sovereign Access) */}
+      {/* 2. Modal: Edit / Modify Member */}
       <Modal
         isOpen={!!editingUser}
         onClose={() => setEditingUser(null)}
-        title="Reassign User Position"
-        subtitle={`System Owner Sovereignty: Configure access position for ${editingUser?.fullName}`}
-        maxWidth="md"
+        title="Modify Member Details"
+        subtitle={`Edit credentials and details for ${editingUser?.fullName}`}
+        maxWidth="lg"
       >
-        <form onSubmit={handleSaveUserRole} className="space-y-4">
-          <div className="p-3 rounded-xl bg-[#0E1524] border border-slate-800 text-xs text-slate-300 space-y-1">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Target User:</span>
-              <span className="font-semibold text-slate-100">{editingUser?.fullName}</span>
+        <form onSubmit={handleSaveEdit} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                Member ID / Username <span className="text-cyan-400">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={editUsername}
+                onChange={(e) => setEditUsername(e.target.value)}
+                disabled={editingUser?.username?.toUpperCase() === 'IMTHIYAS'}
+                className="w-full bg-[#0E1524] border border-slate-700 focus:border-cyan-500 rounded-xl px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none font-mono disabled:opacity-60"
+              />
+              {editingUser?.username?.toUpperCase() === 'IMTHIYAS' && (
+                <p className="text-[10px] text-amber-400 mt-1">Sovereign Owner ID is permanent.</p>
+              )}
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Current Position:</span>
-              <span className="font-mono text-cyan-400">{editingUser?.role}</span>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                Full Legal Name <span className="text-cyan-400">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={editFullName}
+                onChange={(e) => setEditFullName(e.target.value)}
+                className="w-full bg-[#0E1524] border border-slate-700 focus:border-cyan-500 rounded-xl px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none"
+              />
             </div>
           </div>
 
-          <Select
-            label="Select New Position / Role"
-            value={newRoleForUser}
-            onChange={(e) => setNewRoleForUser(e.target.value as UserRole)}
-            options={[
-              { value: 'SYSTEM_OWNER', label: 'System Owner (Root Sovereign)' },
-              { value: 'ADMINISTRATOR', label: 'Administrator' },
-              { value: 'EDITOR', label: 'Editor / Content Publisher' },
-              { value: 'MANAGEMENT', label: 'Management' },
-              { value: 'FACULTY', label: 'Faculty' },
-              { value: 'STUDENT', label: 'Student' },
-              { value: 'SECURITY', label: 'Security Officer' },
-              { value: 'STAFF', label: 'Staff / Facilities' },
-            ]}
-            helperText="As System Owner, you determine the exact operational position and privileges."
-          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                Institutional Email
+              </label>
+              <input
+                type="email"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+                className="w-full bg-[#0E1524] border border-slate-700 focus:border-cyan-500 rounded-xl px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                Assigned Position / Role
+              </label>
+              <select
+                value={editRole}
+                onChange={(e) => setEditRole(e.target.value as UserRole)}
+                disabled={editingUser?.username?.toUpperCase() === 'IMTHIYAS'}
+                className="w-full bg-[#0E1524] border border-slate-700 focus:border-cyan-500 rounded-xl px-3.5 py-2 text-sm text-slate-100 outline-none disabled:opacity-60"
+              >
+                <option value="SYSTEM_OWNER">System Owner (Root Sovereign)</option>
+                <option value="ADMINISTRATOR">Administrator</option>
+                <option value="FACULTY">Faculty / Professor</option>
+                <option value="STUDENT">Student</option>
+                <option value="SECURITY">Campus Security</option>
+                <option value="STAFF">Staff / Operations</option>
+                <option value="MANAGEMENT">Management</option>
+                <option value="EDITOR">Editor</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                Contact Phone
+              </label>
+              <input
+                type="tel"
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                className="w-full bg-[#0E1524] border border-slate-700 focus:border-cyan-500 rounded-xl px-3.5 py-2 text-sm text-slate-100 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                Bio / Dossier
+              </label>
+              <input
+                type="text"
+                value={editBio}
+                onChange={(e) => setEditBio(e.target.value)}
+                className="w-full bg-[#0E1524] border border-slate-700 focus:border-cyan-500 rounded-xl px-3.5 py-2 text-sm text-slate-100 outline-none"
+              />
+            </div>
+          </div>
 
           <div className="pt-4 border-t border-slate-800 flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => setEditingUser(null)}>
               Cancel
             </Button>
-            <Button type="submit" variant="primary" isLoading={isSavingUserRole}>
-              Update User Position
+            <Button type="submit" variant="primary" isLoading={isSavingEdit}>
+              Save Member Changes
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* 3. Modal: Reset / Set User Password */}
+      <Modal
+        isOpen={!!resettingUser}
+        onClose={() => setResettingUser(null)}
+        title="Reset Member Password"
+        subtitle={`System Owner Authority: Set new security password for ${resettingUser?.fullName} (${resettingUser?.username})`}
+        maxWidth="md"
+      >
+        <form onSubmit={handleConfirmResetPassword} className="space-y-4">
+          <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/30 text-xs text-amber-300 space-y-1">
+            <div className="font-semibold flex items-center gap-1.5">
+              <Key className="w-3.5 h-3.5" />
+              <span>Direct Credential Reset</span>
+            </div>
+            <p className="text-[11px] text-slate-300">
+              As System Owner, you can directly override the password for Member ID{' '}
+              <strong className="text-amber-300 font-mono">{resettingUser?.username}</strong> without needing their previous passcode.
+            </p>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-medium text-slate-300">
+                New Security Password <span className="text-cyan-400">*</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowResetPassword(!showResetPassword)}
+                className="text-[11px] text-slate-400 hover:text-cyan-400 flex items-center gap-1 transition-colors"
+              >
+                {showResetPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                <span>{showResetPassword ? 'Hide' : 'Show'}</span>
+              </button>
+            </div>
+            <input
+              type={showResetPassword ? 'text' : 'password'}
+              required
+              autoFocus
+              value={newPasswordForUser}
+              onChange={(e) => setNewPasswordForUser(e.target.value)}
+              placeholder="Enter at least 6 characters..."
+              className="w-full bg-[#0E1524] border border-slate-700 focus:border-cyan-500 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 outline-none font-mono"
+            />
+          </div>
+
+          <div className="pt-4 border-t border-slate-800 flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setResettingUser(null)}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" isLoading={isSubmittingReset}>
+              Update Password
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* 4. Modal: Delete User Confirmation */}
+      <Modal
+        isOpen={!!deletingUser}
+        onClose={() => setDeletingUser(null)}
+        title="Delete Member Account"
+        subtitle="Permanent removal from institutional database"
+        maxWidth="md"
+      >
+        <div className="space-y-4">
+          <div className="p-3.5 rounded-xl bg-rose-950/40 border border-rose-500/40 text-xs text-rose-300 flex items-start gap-2.5">
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-semibold mb-0.5">Are you sure you want to delete this member?</div>
+              <p className="text-[11px] text-slate-300">
+                This will permanently delete the account of{' '}
+                <strong className="text-white">{deletingUser?.fullName}</strong> (Member ID:{' '}
+                <code className="text-cyan-300 font-mono">{deletingUser?.username}</code>). All associated access sessions will be terminated.
+              </p>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-slate-800 flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setDeletingUser(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              isLoading={isDeleting}
+              onClick={handleConfirmDelete}
+            >
+              Confirm Permanent Deletion
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

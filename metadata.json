@@ -2,7 +2,8 @@
   "name": "CUOIS — Campus Unified Operations & Intelligence System",
   "description": "Production-grade, scalable, secure, intelligent, real-time digital operating system for universities and large educational campuses.",
   "requestFramePermissions": [
-    "microphone"
+    "microphone",
+    "geolocation"
   ],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

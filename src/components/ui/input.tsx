@@ -83,3 +83,36 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
 );
 
 Select.displayName = 'Select';
+
+interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+  label?: string;
+  error?: string;
+  helperText?: string;
+}
+
+export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
+  ({ label, error, helperText, className = '', ...props }, ref) => {
+    return (
+      <div className="w-full">
+        {label && (
+          <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5 font-mono">
+            {label}
+            {props.required && <span className="text-cyan-400 ml-1">*</span>}
+          </label>
+        )}
+        <textarea
+          ref={ref}
+          className={`w-full bg-[#090E17] border ${
+            error ? 'border-rose-500/80 focus:ring-rose-500' : 'border-slate-800 focus:border-cyan-500 focus:ring-cyan-500/20'
+          } rounded-lg p-3 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 transition-all font-sans ${className}`}
+          {...props}
+        />
+        {error && <p className="text-xs text-rose-400 mt-1 font-medium">{error}</p>}
+        {helperText && !error && <p className="text-xs text-slate-500 mt-1">{helperText}</p>}
+      </div>
+    );
+  }
+);
+
+Textarea.displayName = 'Textarea';
+

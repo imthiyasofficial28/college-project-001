@@ -1,0 +1,303 @@
+{
+  "institution": {
+    "id": "inst_01",
+    "name": "CUOIS Sovereign Campus",
+    "code": "CUOIS",
+    "tagline": "Campus Unified Operations & Intelligence System • Architected by Imthiyas",
+    "establishedYear": 2025,
+    "address": "Campus Command Center",
+    "timezone": "UTC-5 (Eastern Standard Time)",
+    "academicCalendarType": "SEMESTER",
+    "contactEmail": "imthiyasofficial28@gmail.com",
+    "contactPhone": "+1 (555) 019-4820",
+    "website": "https://cuois.edu",
+    "accreditation": "Autonomous Sovereign Campus OS",
+    "isConfigured": true,
+    "currentAcademicYearId": "ay_2025_2026",
+    "createdAt": "2026-09-13T05:32:42.330Z",
+    "updatedAt": "2026-09-13T05:32:42.330Z"
+  },
+  "campuses": [],
+  "buildings": [],
+  "rooms": [],
+  "departments": [],
+  "programs": [],
+  "academicYears": [
+    {
+      "id": "ay_2025_2026",
+      "name": "2025–2026",
+      "startDate": "2025-08-15",
+      "endDate": "2026-06-30",
+      "isCurrent": true,
+      "isArchived": false
+    }
+  ],
+  "semesters": [],
+  "sections": [],
+  "subjects": [],
+  "users": [
+    {
+      "id": "usr_owner_01",
+      "username": "imthiyas",
+      "email": "imthiyasofficial28@gmail.com",
+      "fullName": "Imthiyas",
+      "role": "SYSTEM_OWNER",
+      "isActive": true,
+      "mfaEnabled": true,
+      "failedLoginAttempts": 0,
+      "lastLoginAt": "2026-09-13T05:32:42.330Z",
+      "createdAt": "2026-09-13T05:32:42.330Z",
+      "updatedAt": "2026-09-13T05:32:42.330Z",
+      "passwordHash": "1e4011fd5a603b0cfefb3dbd925531f787d973eac141e7a55044b5dadb7b84183a90d0a6b12ba484efcfab7d204e8b8ab62bd882c4e179e2e361a9f317d7f2d0",
+      "salt": "e000731fa19fcfdf58d27488c1bbe0c8"
+    }
+  ],
+  "roles": [
+    {
+      "id": "role_sys_owner",
+      "name": "System Owner",
+      "code": "SYSTEM_OWNER",
+      "description": "Root authority with unrestricted access to all operations, security, and institutional modules",
+      "isSystem": true,
+      "permissions": [
+        "*"
+      ],
+      "createdAt": "2026-09-13T05:32:18.223Z",
+      "updatedAt": "2026-09-13T05:32:18.223Z"
+    },
+    {
+      "id": "role_admin",
+      "name": "Administrator",
+      "code": "ADMINISTRATOR",
+      "description": "Full institutional operations, academic planning, facility management, and staff supervision",
+      "isSystem": true,
+      "permissions": [
+        "academic:manage",
+        "users:manage",
+        "attendance:read",
+        "facilities:manage",
+        "complaints:manage",
+        "reports:generate"
+      ],
+      "createdAt": "2026-09-13T05:32:18.223Z",
+      "updatedAt": "2026-09-13T05:32:18.223Z"
+    },
+    {
+      "id": "role_mgmt",
+      "name": "Management",
+      "code": "MANAGEMENT",
+      "description": "Executive campus analytics, strategic intelligence, accreditation reports, and high-level KPIs",
+      "isSystem": true,
+      "permissions": [
+        "analytics:view",
+        "reports:generate",
+        "audit:view",
+        "ai:query"
+      ],
+      "createdAt": "2026-09-13T05:32:18.223Z",
+      "updatedAt": "2026-09-13T05:32:18.223Z"
+    },
+    {
+      "id": "role_faculty",
+      "name": "Faculty Member",
+      "code": "FACULTY",
+      "description": "Course administration, attendance marking, student evaluation, assignments, and academic advisory",
+      "isSystem": true,
+      "permissions": [
+        "attendance:mark",
+        "attendance:read",
+        "marks:enter",
+        "assignments:manage",
+        "students:view",
+        "timetable:view"
+      ],
+      "createdAt": "2026-09-13T05:32:18.223Z",
+      "updatedAt": "2026-09-13T05:32:18.223Z"
+    },
+    {
+      "id": "role_staff",
+      "name": "Operational Staff",
+      "code": "STAFF",
+      "description": "Facility operations, work orders, maintenance execution, lab equipment, and logistics",
+      "isSystem": true,
+      "permissions": [
+        "maintenance:update",
+        "facilities:read",
+        "inventory:manage"
+      ],
+      "createdAt": "2026-09-13T05:32:18.223Z",
+      "updatedAt": "2026-09-13T05:32:18.223Z"
+    },
+    {
+      "id": "role_security",
+      "name": "Campus Security",
+      "code": "SECURITY",
+      "description": "Security operations center, visitor passes, gate control, incident logging, and emergency protocols",
+      "isSystem": true,
+      "permissions": [
+        "security:incidents",
+        "visitors:manage",
+        "zones:monitor",
+        "emergency:broadcast"
+      ],
+      "createdAt": "2026-09-13T05:32:18.223Z",
+      "updatedAt": "2026-09-13T05:32:18.223Z"
+    },
+    {
+      "id": "role_student",
+      "name": "Enrolled Student",
+      "code": "STUDENT",
+      "description": "Access personal attendance, semester timetable, assignments, exam results, library books, and grievance portal",
+      "isSystem": true,
+      "permissions": [
+        "profile:self",
+        "attendance:self",
+        "timetable:self",
+        "results:self",
+        "complaints:submit"
+      ],
+      "createdAt": "2026-09-13T05:32:18.223Z",
+      "updatedAt": "2026-09-13T05:32:18.223Z"
+    }
+  ],
+  "students": [],
+  "faculty": [],
+  "staff": [],
+  "attendance": [],
+  "timetable": [],
+  "assignments": [],
+  "examinations": [],
+  "examSchedules": [],
+  "results": [],
+  "announcements": [],
+  "notifications": [],
+  "complaints": [],
+  "facilities": [],
+  "maintenanceRequests": [],
+  "libraryItems": [],
+  "libraryTransactions": [],
+  "hostels": [],
+  "hostelRooms": [],
+  "transportRoutes": [],
+  "vehicles": [],
+  "visitors": [],
+  "securityIncidents": [],
+  "securityZones": [],
+  "auditLogs": [
+    {
+      "actorId": "usr_owner_01",
+      "actorName": "Chancellor Alexander Vance",
+      "actorRole": "SYSTEM_OWNER",
+      "action": "ROLE_PERSPECTIVE_SWITCH",
+      "entity": "USER_ROLE",
+      "entityId": "usr_owner_01",
+      "newValue": "SYSTEM_OWNER",
+      "ipAddress": "127.0.0.1",
+      "id": "audit_1789278072996_2413",
+      "timestamp": "2026-09-13T05:41:12.996Z"
+    },
+    {
+      "actorId": "usr_owner_01",
+      "actorName": "Chancellor Alexander Vance",
+      "actorRole": "FACULTY",
+      "action": "ROLE_PERSPECTIVE_SWITCH",
+      "entity": "USER_ROLE",
+      "entityId": "usr_owner_01",
+      "newValue": "FACULTY",
+      "ipAddress": "127.0.0.1",
+      "id": "audit_1789278056418_4399",
+      "timestamp": "2026-09-13T05:40:56.418Z"
+    },
+    {
+      "actorId": "usr_owner_01",
+      "actorName": "Chancellor Alexander Vance",
+      "actorRole": "SECURITY",
+      "action": "ROLE_PERSPECTIVE_SWITCH",
+      "entity": "USER_ROLE",
+      "entityId": "usr_owner_01",
+      "newValue": "SECURITY",
+      "ipAddress": "127.0.0.1",
+      "id": "audit_1789278050612_6341",
+      "timestamp": "2026-09-13T05:40:50.612Z"
+    },
+    {
+      "actorId": "usr_owner_01",
+      "actorName": "Chancellor Alexander Vance",
+      "actorRole": "SYSTEM_OWNER",
+      "action": "ROLE_PERSPECTIVE_SWITCH",
+      "entity": "USER_ROLE",
+      "entityId": "usr_owner_01",
+      "newValue": "SYSTEM_OWNER",
+      "ipAddress": "127.0.0.1",
+      "id": "audit_1789278025753_9538",
+      "timestamp": "2026-09-13T05:40:25.753Z"
+    },
+    {
+      "actorId": "usr_owner_01",
+      "actorName": "Chancellor Alexander Vance",
+      "actorRole": "SYSTEM_OWNER",
+      "action": "CONFIDENTIAL_REPORT_SUBMITTED",
+      "entity": "ConfidentialReport",
+      "entityId": "cr_1789278021870",
+      "newValue": "{\"ticketCode\":\"CR-2026-0001\",\"category\":\"HARASSMENT\"}",
+      "ipAddress": "127.0.0.1",
+      "id": "audit_1789278021871_1338",
+      "timestamp": "2026-09-13T05:40:21.871Z"
+    },
+    {
+      "actorId": "usr_owner_01",
+      "actorName": "Chancellor Alexander Vance",
+      "actorRole": "STUDENT",
+      "action": "ROLE_PERSPECTIVE_SWITCH",
+      "entity": "USER_ROLE",
+      "entityId": "usr_owner_01",
+      "newValue": "STUDENT",
+      "ipAddress": "127.0.0.1",
+      "id": "audit_1789277982404_9373",
+      "timestamp": "2026-09-13T05:39:42.404Z"
+    },
+    {
+      "actorId": "usr_owner_01",
+      "actorName": "Chancellor Alexander Vance",
+      "actorRole": "SYSTEM_OWNER",
+      "action": "BOOTSTRAP_INSTITUTION",
+      "entity": "INSTITUTION",
+      "entityId": "inst_01",
+      "newValue": "{\"name\":\"Apex Horizon University of Technology\",\"template\":\"EMPTY\"}",
+      "ipAddress": "127.0.0.1",
+      "id": "audit_1789277562331_3167",
+      "timestamp": "2026-09-13T05:32:42.331Z"
+    },
+    {
+      "actorId": "usr_1789277516691_975",
+      "actorName": "Imthiyas M",
+      "actorRole": "SYSTEM_OWNER",
+      "action": "RESET_INSTITUTION_TO_EMPTY",
+      "entity": "INSTITUTION",
+      "entityId": "ALL",
+      "ipAddress": "127.0.0.1",
+      "id": "audit_1789277538224_2907",
+      "timestamp": "2026-09-13T05:32:18.224Z"
+    }
+  ],
+  "aiInsights": [],
+  "surveys": [],
+  "surveyResponses": [],
+  "confidentialReports": [
+    {
+      "category": "HARASSMENT",
+      "priority": "CRITICAL",
+      "subject": "HELP",
+      "description": "I WANT",
+      "reporterUserId": "usr_owner_01",
+      "reporterName": "Chancellor Alexander Vance",
+      "reporterRole": "SYSTEM_OWNER",
+      "status": "SUBMITTED",
+      "id": "cr_1789278021870",
+      "ticketCode": "CR-2026-0001",
+      "reporterRevealed": false,
+      "createdAt": "2026-09-13T05:40:21.870Z",
+      "updatedAt": "2026-09-13T05:40:21.870Z"
+    }
+  ]
+}

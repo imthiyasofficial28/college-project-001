@@ -40,9 +40,19 @@ import {
   UserRole,
   GeminiModelChoice,
   GroundingSource,
+  Assignment,
+  Examination,
+  ExamSchedule,
+  Result,
+  Survey,
+  SurveyResponse,
+  ConfidentialReport,
+  StudentRiskIndicator,
+  DigitalTwinNode,
 } from '../types/index.ts';
 
 const TOKEN_KEY = 'cuois_auth_token';
+export const LAST_SAVED_KEY = 'cuois_last_saved_timestamp';
 
 export function getStoredToken(): string | null {
   try {
@@ -64,6 +74,31 @@ export function setStoredToken(token: string | null): void {
   }
 }
 
+export function getLastSavedTimestamp(): string | null {
+  try {
+    return localStorage.getItem(LAST_SAVED_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function recordLocalMemorySync(customIso?: string): string {
+  const timestamp = customIso || new Date().toISOString();
+  try {
+    localStorage.setItem(LAST_SAVED_KEY, timestamp);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('cuois:data-saved', {
+          detail: { timestamp, source: 'local_memory' },
+        })
+      );
+    }
+  } catch {
+    // ignore
+  }
+  return timestamp;
+}
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = getStoredToken();
   const headers = new Headers(options.headers || {});
@@ -71,6 +106,9 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
+
+  const method = (options.method || 'GET').toUpperCase();
+  const isMutation = method !== 'GET' && method !== 'HEAD';
 
   const res = await fetch(endpoint, {
     ...options,
@@ -82,12 +120,22 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     throw new Error(errorData.error || `HTTP error ${res.status}: ${res.statusText}`);
   }
 
-  return res.json();
+  const data = await res.json();
+  if (isMutation) {
+    recordLocalMemorySync();
+  }
+  return data;
 }
 
 export const api = {
   // Bootstrap & Institution
   getBootstrapStatus: () => request<{ isConfigured: boolean; institution: Institution | null }>('/api/bootstrap/status'),
+  getInstitution: () => request<Institution | null>('/api/institution'),
+  updateInstitution: (data: Partial<Institution>) =>
+    request<Institution>('/api/institution', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
   initializeInstitution: (payload: { institution: any; owner: any; template?: string }) =>
     request<{ success: boolean; institution: Institution; session: AuthSession }>('/api/bootstrap/initialize', {
       method: 'POST',
@@ -96,10 +144,25 @@ export const api = {
   resetInstitution: () => request<{ success: boolean }>('/api/bootstrap/reset', { method: 'POST' }),
 
   // Auth
-  login: (credentials: { email: string; password: string }) =>
+  login: (credentials: { identifier?: string; email?: string; username?: string; password: string }) =>
     request<{ session: AuthSession }>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify(credentials),
+    }),
+  personalizedEntry: (payload: { fullName: string; role: UserRole; password?: string }) =>
+    request<{ session: AuthSession }>('/api/auth/personalized-entry', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateProfile: (data: Partial<User>) =>
+    request<{ user: User }>('/api/auth/profile', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  changePassword: (data: { currentPassword?: string; newPassword: string }) =>
+    request<{ success: boolean; message: string }>('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
   getMe: () => request<{ user: User; rolePermissions: string[]; sessionToken: string }>('/api/auth/me'),
   logout: () => request<{ success: boolean }>('/api/auth/logout', { method: 'POST' }),
@@ -118,6 +181,26 @@ export const api = {
   addBuilding: (data: Partial<Building>) => request<Building>('/api/buildings', { method: 'POST', body: JSON.stringify(data) }),
   getRooms: () => request<Room[]>('/api/rooms'),
 
+  // Digital Twin Nodes & Spatial Telemetry
+  getDigitalTwinNodes: () => request<DigitalTwinNode[]>('/api/digital-twin/nodes'),
+  addDigitalTwinNode: (data: Partial<DigitalTwinNode>) => request<DigitalTwinNode>('/api/digital-twin/nodes', { method: 'POST', body: JSON.stringify(data) }),
+  updateDigitalTwinNode: (id: string, data: Partial<DigitalTwinNode>) => request<DigitalTwinNode>(`/api/digital-twin/nodes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteDigitalTwinNode: (id: string) => request<{ success: boolean }>(`/api/digital-twin/nodes/${id}`, { method: 'DELETE' }),
+  syncDigitalTwinWeather: (id: string) => request<DigitalTwinNode>(`/api/digital-twin/nodes/${id}/weather-sync`, { method: 'POST' }),
+  getLiveWeather: (lat: number, lng: number) =>
+    request<{
+      latitude: number;
+      longitude: number;
+      temperatureF: number;
+      feelsLikeF: number;
+      humidity: number;
+      windSpeedMph: number;
+      weatherCode: number;
+      condition: string;
+      timestamp: string;
+      source: string;
+    }>(`/api/digital-twin/weather?lat=${lat}&lng=${lng}`),
+
   // Academic Structure
   getDepartments: () => request<Department[]>('/api/departments'),
   addDepartment: (data: Partial<Department>) => request<Department>('/api/departments', { method: 'POST', body: JSON.stringify(data) }),
@@ -132,7 +215,12 @@ export const api = {
   // Users & RBAC
   getUsers: () => request<User[]>('/api/users'),
   createUser: (data: Partial<User> & { password?: string }) => request<User>('/api/users', { method: 'POST', body: JSON.stringify(data) }),
-  updateUser: (id: string, data: Partial<User>) => request<User>(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  updateUser: (id: string, data: Partial<User> & { password?: string }) => request<User>(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  resetUserPassword: (id: string, newPassword: string) =>
+    request<{ success: boolean; message: string }>(`/api/users/${id}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ newPassword }),
+    }),
   deleteUser: (id: string) => request<{ success: boolean }>(`/api/users/${id}`, { method: 'DELETE' }),
   getRoles: () => request<RoleDefinition[]>('/api/roles'),
   updateRolePermissions: (roleCode: string, permissions: string[]) =>
@@ -250,6 +338,40 @@ export const api = {
       body: JSON.stringify({ entityType, records, mode }),
     }),
   exportData: () => request<any>('/api/data/export'),
+
+  // Academic Modules: Assignments & Examinations
+  getAssignments: () => request<Assignment[]>('/api/assignments'),
+  addAssignment: (data: Partial<Assignment>) =>
+    request<Assignment>('/api/assignments', { method: 'POST', body: JSON.stringify(data) }),
+  getExaminations: () => request<Examination[]>('/api/examinations'),
+  getExamSchedules: () => request<ExamSchedule[]>('/api/exam-schedules'),
+  getResults: () => request<Result[]>('/api/results'),
+
+  // Surveys (Anonymous & Targeted)
+  getSurveys: () => request<Survey[]>('/api/surveys'),
+  addSurvey: (data: Partial<Survey>) =>
+    request<Survey>('/api/surveys', { method: 'POST', body: JSON.stringify(data) }),
+  respondSurvey: (surveyId: string, answers: { questionId: string; value: any }[]) =>
+    request<{ success: boolean; message: string }>(`/api/surveys/${surveyId}/respond`, {
+      method: 'POST',
+      body: JSON.stringify({ answers }),
+    }),
+
+  // Confidential Reporting & Whistleblower Grievance
+  getConfidentialReports: () => request<ConfidentialReport[]>('/api/confidential-reports'),
+  submitConfidentialReport: (data: Partial<ConfidentialReport>) =>
+    request<ConfidentialReport>('/api/confidential-reports', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  revealConfidentialReport: (id: string, reason: string) =>
+    request<ConfidentialReport>(`/api/confidential-reports/${id}/reveal`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+
+  // Student Risk Early-Warning Intelligence
+  getStudentRiskIndicators: () => request<StudentRiskIndicator[]>('/api/academic-risk/students'),
 
   // SSE Stream
   subscribeRealtimeEvents: (onEvent: (event: { type: string; timestamp: string; data: any }) => void) => {

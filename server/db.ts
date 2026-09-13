@@ -44,6 +44,12 @@ import {
   AuditLog,
   AIInsight,
   RoleDefinition,
+  Survey,
+  SurveyQuestion,
+  SurveyResponse,
+  ConfidentialReport,
+  StudentRiskIndicator,
+  DigitalTwinNode,
 } from '../src/types/index.ts';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -87,6 +93,10 @@ export interface DatabaseSchema {
   securityZones: SecurityZone[];
   auditLogs: AuditLog[];
   aiInsights: AIInsight[];
+  surveys: Survey[];
+  surveyResponses: SurveyResponse[];
+  confidentialReports: ConfidentialReport[];
+  digitalTwinNodes: DigitalTwinNode[];
 }
 
 export function hashPassword(password: string, salt?: string): { hash: string; salt: string } {
@@ -149,6 +159,10 @@ class DatabaseService {
       securityZones: [],
       auditLogs: [],
       aiInsights: [],
+      surveys: [],
+      surveyResponses: [],
+      confidentialReports: [],
+      digitalTwinNodes: this.getDefaultDigitalTwinNodes(),
     };
   }
 
@@ -263,6 +277,9 @@ class DatabaseService {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
         const parsed = JSON.parse(raw);
         this.data = { ...this.getEmptySchema(), ...parsed };
+        if (!this.data.digitalTwinNodes || this.data.digitalTwinNodes.length === 0) {
+          this.data.digitalTwinNodes = this.getDefaultDigitalTwinNodes();
+        }
         console.log('[CUOIS DB] Loaded database state from disk.');
       } else {
         // First-time empty institution initialization with pre-configured System Owner account ready
@@ -270,6 +287,8 @@ class DatabaseService {
         this.persistImmediate();
         console.log('[CUOIS DB] Initialized clean empty database.');
       }
+      // Guarantee Sovereign System Owner account (IMTHIYAS / Imthiyas@12345) exists and is active
+      this.ensureSystemOwnerAccount();
       this.isLoaded = true;
     } catch (err) {
       console.error('[CUOIS DB] Initialization error:', err);
@@ -278,7 +297,7 @@ class DatabaseService {
     }
   }
 
-  private scheduleSave() {
+  public scheduleSave() {
     if (this.saveTimeout) {
       clearTimeout(this.saveTimeout);
     }
@@ -314,17 +333,17 @@ class DatabaseService {
     const instId = 'inst_01';
     const institution: Institution = {
       id: instId,
-      name: payload.institution.name || 'Apex University of Science & Technology',
-      code: payload.institution.code || 'AUST',
-      tagline: payload.institution.tagline || 'Excellence in Innovation, Ethics, and Global Leadership',
-      establishedYear: payload.institution.establishedYear || 1994,
-      address: payload.institution.address || '100 University Boulevard, Tech District, Metro Campus',
+      name: payload.institution.name || 'Campus University',
+      code: payload.institution.code || 'CUOIS',
+      tagline: payload.institution.tagline || 'Unified Operations & Intelligence System • Architected by Imthiyas',
+      establishedYear: payload.institution.establishedYear || 2025,
+      address: payload.institution.address || 'Campus Command Center',
       timezone: payload.institution.timezone || 'UTC-5 (Eastern Standard Time)',
       academicCalendarType: payload.institution.academicCalendarType || 'SEMESTER',
-      contactEmail: payload.institution.contactEmail || payload.owner.email,
-      contactPhone: payload.institution.contactPhone || '+1 (555) 839-2000',
-      website: payload.institution.website || 'https://aust.edu',
-      accreditation: payload.institution.accreditation || 'NAAC Grade A++ / ABET Accredited',
+      contactEmail: payload.institution.contactEmail || payload.owner.email || 'imthiyasofficial28@gmail.com',
+      contactPhone: payload.institution.contactPhone || '+1 (555) 019-4820',
+      website: payload.institution.website || '',
+      accreditation: payload.institution.accreditation || 'Autonomous Sovereign Campus OS',
       isConfigured: true,
       currentAcademicYearId: 'ay_2025_2026',
       createdAt: now,
@@ -334,13 +353,13 @@ class DatabaseService {
     this.data.institution = institution;
 
     // Create Root System Owner
-    const { hash, salt } = hashPassword(payload.owner.password);
+    const { hash, salt } = hashPassword(payload.owner.password || 'Cuois@2025');
     const ownerId = 'usr_owner_01';
     const ownerUser: User & { passwordHash: string; salt: string } = {
       id: ownerId,
-      username: payload.owner.email.split('@')[0] || 'sysowner',
-      email: payload.owner.email,
-      fullName: payload.owner.fullName,
+      username: (payload.owner.email ? payload.owner.email.split('@')[0] : 'imthiyas') || 'imthiyas',
+      email: payload.owner.email || 'imthiyasofficial28@gmail.com',
+      fullName: payload.owner.fullName || 'Imthiyas',
       role: 'SYSTEM_OWNER',
       isActive: true,
       mfaEnabled: true,
@@ -973,12 +992,165 @@ class DatabaseService {
         generatedAt: now,
       },
     ];
+
+    // 23. Campus Surveys (Anonymous vs Identified)
+    this.data.surveys = [
+      {
+        id: 'srv_01',
+        title: 'Fall 2025 Campus Computing & AI Lab Experience',
+        description: 'Help us improve compute cluster availability, GPU queues, and lab workstations. Responses are strictly ANONYMOUS.',
+        targetAudience: 'STUDENTS',
+        isAnonymous: true,
+        status: 'ACTIVE',
+        startDate: '2025-09-01T00:00:00Z',
+        endDate: '2025-10-15T23:59:59Z',
+        questions: [
+          {
+            id: 'q1',
+            text: 'How satisfied are you with workstation performance and network latency in Turing Labs?',
+            type: 'RATING',
+            required: true,
+          },
+          {
+            id: 'q2',
+            text: 'Which primary development stack do you utilize for coursework projects?',
+            type: 'MULTIPLE_CHOICE',
+            options: ['Python / PyTorch', 'TypeScript / Node.js', 'C++ / Systems', 'Java / Kotlin', 'Rust'],
+            required: true,
+          },
+          {
+            id: 'q3',
+            text: 'Would extended 24-hour weekend access to CS-202 benefit your project workflow?',
+            type: 'BOOLEAN',
+            required: true,
+          },
+          {
+            id: 'q4',
+            text: 'Any additional feedback on lab equipment or climate control?',
+            type: 'TEXT',
+            required: false,
+          },
+        ],
+        responsesCount: 42,
+        authorId: ownerUser.id,
+        authorName: ownerUser.fullName,
+        createdAt: '2025-09-01T10:00:00Z',
+      },
+      {
+        id: 'srv_02',
+        title: 'Faculty Classroom Audiovisual & Smart Podium Feedback',
+        description: 'Evaluating classroom smart podiums, digital stylus monitors, and lecture capture systems.',
+        targetAudience: 'FACULTY',
+        isAnonymous: true,
+        status: 'ACTIVE',
+        startDate: '2025-09-05T00:00:00Z',
+        endDate: '2025-10-30T23:59:59Z',
+        questions: [
+          {
+            id: 'fq1',
+            text: 'Rate the reliability of the wireless projection systems in lecture halls',
+            type: 'RATING',
+            required: true,
+          },
+          {
+            id: 'fq2',
+            text: 'What additional software licenses are urgently needed for classroom demonstrations?',
+            type: 'TEXT',
+            required: false,
+          },
+        ],
+        responsesCount: 18,
+        authorId: ownerUser.id,
+        authorName: ownerUser.fullName,
+        createdAt: '2025-09-05T09:00:00Z',
+      },
+    ];
+
+    // 24. Confidential Whistleblower & Grievance Reports
+    // Note: Identity is encrypted and hidden. Only System Owner can view decrypted reporter details.
+    this.data.confidentialReports = [
+      {
+        id: 'cr_01',
+        ticketCode: 'CR-2025-0012',
+        category: 'SAFETY_HAZARD',
+        subject: 'Improper storage of solvent drums near electrical conduit in Raman Sub-basement',
+        description: 'During after-hours lab work, observed chemical containers placed in the auxiliary generator switch room, obstructing emergency shut-off access.',
+        priority: 'HIGH',
+        status: 'INVESTIGATING',
+        reporterUserId: 'usr_student_01',
+        reporterName: 'Marcus Chen',
+        reporterRole: 'STUDENT',
+        reporterRevealed: false,
+        createdAt: '2025-09-10T14:32:00Z',
+        updatedAt: '2025-09-11T09:15:00Z',
+      },
+      {
+        id: 'cr_02',
+        ticketCode: 'CR-2025-0014',
+        category: 'ACADEMIC_INTEGRITY',
+        subject: 'Unauthorized distribution of preliminary test solutions via private messaging group',
+        description: 'Suspected distribution of compromised quiz materials prior to official examination window.',
+        priority: 'MEDIUM',
+        status: 'UNDER_REVIEW',
+        reporterUserId: 'usr_faculty_01',
+        reporterName: 'Prof. Marcus Chen',
+        reporterRole: 'FACULTY',
+        reporterRevealed: false,
+        createdAt: '2025-09-11T16:45:00Z',
+        updatedAt: '2025-09-11T16:45:00Z',
+      },
+    ];
   }
 
   // --- CRUD HELPERS FOR CORE MODULES ---
 
   public getUsers(): User[] {
     return this.data.users.map(({ passwordHash: _, salt: __, ...user }) => user);
+  }
+
+  public ensureSystemOwnerAccount(): void {
+    const creds = hashPassword('Imthiyas@12345');
+    const now = new Date().toISOString();
+
+    // Check if user with username IMTHIYAS or email imthiyasofficial28@gmail.com or role SYSTEM_OWNER exists
+    const existingIndex = this.data.users.findIndex(
+      (u) =>
+        (u.username && u.username.toUpperCase() === 'IMTHIYAS') ||
+        (u.email && u.email.toLowerCase() === 'imthiyasofficial28@gmail.com') ||
+        u.role === 'SYSTEM_OWNER'
+    );
+
+    if (existingIndex !== -1) {
+      this.data.users[existingIndex].username = 'IMTHIYAS';
+      this.data.users[existingIndex].email = 'imthiyasofficial28@gmail.com';
+      this.data.users[existingIndex].fullName = 'Imthiyas';
+      this.data.users[existingIndex].role = 'SYSTEM_OWNER';
+      this.data.users[existingIndex].isActive = true;
+      this.data.users[existingIndex].passwordHash = creds.hash;
+      this.data.users[existingIndex].salt = creds.salt;
+      this.data.users[existingIndex].failedLoginAttempts = 0;
+      this.data.users[existingIndex].lockedUntil = null;
+      this.data.users[existingIndex].updatedAt = now;
+      console.log('[CUOIS DB] Sovereign System Owner (IMTHIYAS) account verified and secured.');
+    } else {
+      const ownerUser: User & { passwordHash: string; salt: string } = {
+        id: 'usr_owner_01',
+        username: 'IMTHIYAS',
+        email: 'imthiyasofficial28@gmail.com',
+        fullName: 'Imthiyas',
+        role: 'SYSTEM_OWNER',
+        isActive: true,
+        mfaEnabled: true,
+        failedLoginAttempts: 0,
+        createdAt: now,
+        updatedAt: now,
+        passwordHash: creds.hash,
+        salt: creds.salt,
+      };
+      this.data.users.unshift(ownerUser);
+      console.log('[CUOIS DB] Created Sovereign System Owner (IMTHIYAS) master account.');
+    }
+    this.persistImmediate();
   }
 
   public findUserById(id: string): (User & { passwordHash: string; salt: string }) | undefined {
@@ -989,20 +1161,45 @@ class DatabaseService {
     return this.data.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
   }
 
+  public findUserByIdentifier(identifier: string): (User & { passwordHash: string; salt: string }) | undefined {
+    const clean = (identifier || '').trim().toLowerCase();
+    if (!clean) return undefined;
+    return this.data.users.find(
+      (u) =>
+        (u.username && u.username.toLowerCase() === clean) ||
+        (u.email && u.email.toLowerCase() === clean) ||
+        (u.id && u.id.toLowerCase() === clean)
+    );
+  }
+
   public createUser(userPayload: Partial<User> & { password?: string }): User {
     const now = new Date().toISOString();
     const id = `usr_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    const { hash, salt } = hashPassword(userPayload.password || 'cuois@Default2025');
+
+    const username = (userPayload.username || (userPayload.email ? userPayload.email.split('@')[0] : `user_${id}`)).trim();
+    const email = (userPayload.email || `${username.toLowerCase()}@campus.local`).trim().toLowerCase();
+
+    // Check duplicate username or email
+    const duplicate = this.data.users.find(
+      (u) => u.username.toLowerCase() === username.toLowerCase() || u.email.toLowerCase() === email
+    );
+    if (duplicate) {
+      throw new Error(`A user with Member ID "${username}" or email "${email}" already exists.`);
+    }
+
+    const { hash, salt } = hashPassword(userPayload.password || 'Campus@12345');
 
     const newUser: User & { passwordHash: string; salt: string } = {
       id,
-      username: userPayload.username || (userPayload.email ? userPayload.email.split('@')[0] : `user_${id}`),
-      email: userPayload.email || `${id}@campus.local`,
-      fullName: userPayload.fullName || 'Unnamed User',
+      username,
+      email,
+      fullName: userPayload.fullName?.trim() || 'Unnamed Member',
       role: userPayload.role || 'STUDENT',
       isActive: userPayload.isActive ?? true,
       departmentId: userPayload.departmentId,
       phone: userPayload.phone,
+      bio: userPayload.bio,
+      avatarUrl: userPayload.avatarUrl,
       mfaEnabled: userPayload.mfaEnabled ?? false,
       failedLoginAttempts: 0,
       createdAt: now,
@@ -1023,11 +1220,22 @@ class DatabaseService {
     if (idx === -1) return null;
 
     const existing = this.data.users[idx];
+
+    // If username is being changed, ensure it is unique
+    if (updates.username && updates.username.trim().toLowerCase() !== existing.username.toLowerCase()) {
+      const duplicate = this.data.users.find(
+        (u) => u.id !== id && u.username.toLowerCase() === updates.username!.trim().toLowerCase()
+      );
+      if (duplicate) {
+        throw new Error(`Member ID "${updates.username}" is already taken by another user.`);
+      }
+    }
+
     let newHash = existing.passwordHash;
     let newSalt = existing.salt;
 
-    if (updates.password) {
-      const creds = hashPassword(updates.password);
+    if (updates.password && updates.password.trim()) {
+      const creds = hashPassword(updates.password.trim());
       newHash = creds.hash;
       newSalt = creds.salt;
     }
@@ -1035,6 +1243,9 @@ class DatabaseService {
     const updated: User & { passwordHash: string; salt: string } = {
       ...existing,
       ...updates,
+      username: updates.username ? updates.username.trim() : existing.username,
+      email: updates.email ? updates.email.trim().toLowerCase() : existing.email,
+      fullName: updates.fullName !== undefined ? updates.fullName.trim() : existing.fullName,
       passwordHash: newHash,
       salt: newSalt,
       updatedAt: new Date().toISOString(),
@@ -1045,6 +1256,52 @@ class DatabaseService {
 
     const { passwordHash: _, salt: __, ...cleanUser } = updated;
     return cleanUser;
+  }
+
+  public resetUserPassword(userId: string, newPassword: string): boolean {
+    const user = this.data.users.find((u) => u.id === userId);
+    if (!user) return false;
+    const { hash, salt } = hashPassword(newPassword);
+    user.passwordHash = hash;
+    user.salt = salt;
+    user.failedLoginAttempts = 0;
+    user.lockedUntil = null;
+    user.updatedAt = new Date().toISOString();
+    this.scheduleSave();
+    return true;
+  }
+
+  public changeUserPassword(
+    userId: string,
+    currentPassword: string | undefined,
+    newPassword: string,
+    bypassCurrentCheck: boolean = false
+  ): { success: boolean; error?: string } {
+    const user = this.data.users.find((u) => u.id === userId);
+    if (!user) return { success: false, error: 'User not found' };
+
+    if (!bypassCurrentCheck) {
+      if (!currentPassword) {
+        return { success: false, error: 'Current password is required.' };
+      }
+      const isValid = verifyPassword(currentPassword, user.passwordHash, user.salt);
+      if (!isValid) {
+        return { success: false, error: 'Current password does not match.' };
+      }
+    }
+
+    if (!newPassword || newPassword.length < 6) {
+      return { success: false, error: 'New password must be at least 6 characters long.' };
+    }
+
+    const { hash, salt } = hashPassword(newPassword);
+    user.passwordHash = hash;
+    user.salt = salt;
+    user.failedLoginAttempts = 0;
+    user.lockedUntil = null;
+    user.updatedAt = new Date().toISOString();
+    this.scheduleSave();
+    return { success: true };
   }
 
   public deleteUser(id: string): boolean {
@@ -1154,6 +1411,18 @@ class DatabaseService {
   }
 
   // --- GENERIC ENTITY GETTERS & MUTATORS ---
+  public updateInstitution(updates: Partial<Institution>): Institution {
+    if (!this.data.institution) {
+      throw new Error('Institution not initialized');
+    }
+    this.data.institution = {
+      ...this.data.institution,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+    this.scheduleSave();
+    return this.data.institution;
+  }
   public getBuildings(): Building[] { return this.data.buildings; }
   public getRooms(): Room[] { return this.data.rooms; }
   public getDepartments(): Department[] { return this.data.departments; }
@@ -1181,6 +1450,154 @@ class DatabaseService {
   public getAnnouncements(): Announcement[] { return this.data.announcements; }
   public getNotifications(): Notification[] { return this.data.notifications; }
   public getRoles(): RoleDefinition[] { return this.data.roles; }
+  public getAssignments(): Assignment[] { return this.data.assignments || []; }
+  public getExaminations(): Examination[] { return this.data.examinations || []; }
+  public getExamSchedules(): ExamSchedule[] { return this.data.examSchedules || []; }
+  public getResults(): Result[] { return this.data.results || []; }
+  public getSurveys(): Survey[] { return this.data.surveys || []; }
+  public getConfidentialReports(): ConfidentialReport[] { return this.data.confidentialReports || []; }
+
+  public addAssignment(data: Omit<Assignment, 'id' | 'createdAt'>): Assignment {
+    const item: Assignment = {
+      ...data,
+      id: `asg_${Date.now()}`,
+      createdAt: new Date().toISOString(),
+    };
+    this.data.assignments.unshift(item);
+    this.scheduleSave();
+    return item;
+  }
+
+  public addSurvey(data: Omit<Survey, 'id' | 'createdAt' | 'responsesCount'>): Survey {
+    const survey: Survey = {
+      ...data,
+      id: `srv_${Date.now()}`,
+      responsesCount: 0,
+      createdAt: new Date().toISOString(),
+    };
+    if (!this.data.surveys) this.data.surveys = [];
+    this.data.surveys.unshift(survey);
+    this.scheduleSave();
+    return survey;
+  }
+
+  public respondSurvey(surveyId: string, response: Omit<SurveyResponse, 'id' | 'submittedAt'>): boolean {
+    const survey = (this.data.surveys || []).find((s) => s.id === surveyId);
+    if (!survey) return false;
+
+    if (!this.data.surveyResponses) this.data.surveyResponses = [];
+
+    // If survey is anonymous, strip respondent user ID completely to ensure zero possibility of de-anonymization
+    const sanitizedResponse: SurveyResponse = {
+      ...response,
+      id: `sr_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      respondentUserId: survey.isAnonymous ? null : response.respondentUserId,
+      submittedAt: new Date().toISOString(),
+    };
+
+    this.data.surveyResponses.push(sanitizedResponse);
+    survey.responsesCount = (survey.responsesCount || 0) + 1;
+    this.scheduleSave();
+    return true;
+  }
+
+  public addConfidentialReport(
+    data: Omit<ConfidentialReport, 'id' | 'ticketCode' | 'createdAt' | 'updatedAt' | 'reporterRevealed'>
+  ): ConfidentialReport {
+    const now = new Date().toISOString();
+    const count = (this.data.confidentialReports || []).length + 1;
+    const ticketCode = `CR-${new Date().getFullYear()}-${count.toString().padStart(4, '0')}`;
+
+    const report: ConfidentialReport = {
+      ...data,
+      id: `cr_${Date.now()}`,
+      ticketCode,
+      reporterRevealed: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    if (!this.data.confidentialReports) this.data.confidentialReports = [];
+    this.data.confidentialReports.unshift(report);
+    this.scheduleSave();
+    return report;
+  }
+
+  public revealConfidentialReport(id: string, revealedBy: string): ConfidentialReport | null {
+    const report = (this.data.confidentialReports || []).find((r) => r.id === id);
+    if (!report) return null;
+
+    report.reporterRevealed = true;
+    report.revealedBy = revealedBy;
+    report.revealedAt = new Date().toISOString();
+    report.updatedAt = new Date().toISOString();
+    this.scheduleSave();
+    return report;
+  }
+
+  // Early-Warning Student Risk Analytics Engine
+  public getStudentRiskIndicators(): StudentRiskIndicator[] {
+    const students = this.data.students || [];
+    const attendanceRecords = this.data.attendance || [];
+    const departments = this.data.departments || [];
+    const sections = this.data.sections || [];
+
+    return students.map((student) => {
+      const studentAtt = attendanceRecords.filter((a) => a.studentId === student.id);
+      const totalSessions = studentAtt.length;
+      const presentSessions = studentAtt.filter((a) => a.status === 'PRESENT' || a.status === 'LATE').length;
+      const attPercent = totalSessions > 0 ? Math.round((presentSessions / totalSessions) * 100) : 85;
+
+      const dept = departments.find((d) => d.id === student.departmentId);
+      const sec = sections.find((s) => s.id === student.sectionId);
+
+      // Early Warning heuristics
+      const riskFactors: string[] = [];
+      let calculatedRisk: 'GREEN' | 'YELLOW' | 'RED' = 'GREEN';
+
+      if (attPercent < 65) {
+        calculatedRisk = 'RED';
+        riskFactors.push(`Critical attendance deficit (${attPercent}% vs 75% requirement)`);
+      } else if (attPercent < 75) {
+        calculatedRisk = 'YELLOW';
+        riskFactors.push(`Borderline attendance shortfall (${attPercent}%)`);
+      }
+
+      const cgpa = student.cgpa || 7.5;
+      if (cgpa < 6.0) {
+        calculatedRisk = 'RED';
+        riskFactors.push(`Cumulative GPA below academic warning threshold (${cgpa.toFixed(2)})`);
+      } else if (cgpa < 7.0 && calculatedRisk !== 'RED') {
+        calculatedRisk = 'YELLOW';
+        riskFactors.push(`Moderate GPA dip (${cgpa.toFixed(2)})`);
+      }
+
+      let completionRate = 90;
+      if (calculatedRisk === 'RED') completionRate = 58;
+      else if (calculatedRisk === 'YELLOW') completionRate = 74;
+
+      let recommendedAction = 'Maintain standard progress tracking';
+      if (calculatedRisk === 'RED') {
+        recommendedAction = 'Schedule mandatory advisory intervention and faculty counseling session';
+      } else if (calculatedRisk === 'YELLOW') {
+        recommendedAction = 'Send automated attendance recovery advisory to student and parent';
+      }
+
+      return {
+        studentId: student.id,
+        studentName: student.fullName || 'Student',
+        registrationNumber: student.registrationNumber,
+        departmentName: dept?.name || 'Computing',
+        sectionName: sec?.name || 'Section A',
+        riskLevel: calculatedRisk,
+        attendancePercentage: attPercent,
+        assignmentCompletionRate: completionRate,
+        cgpa,
+        riskFactors: riskFactors.length > 0 ? riskFactors : ['Optimal academic standing'],
+        recommendedAction,
+      };
+    });
+  }
 
   // Generic mutators
   public addStudent(data: Omit<Student, 'id'>): Student {
@@ -1611,6 +2028,194 @@ class DatabaseService {
     } catch (err: any) {
       return { success: false, createdCount, updatedCount, errors: [err?.message || 'Import processing error'] };
     }
+  }
+
+  // --- DIGITAL TWIN ASSET TELEMETRY & CRUD ---
+  public getDefaultDigitalTwinNodes(): DigitalTwinNode[] {
+    return [
+      {
+        id: 'node_computing',
+        name: 'School of Computing & Artificial Intelligence',
+        code: 'BLD-COMP',
+        category: 'COMPUTING',
+        x: 32,
+        y: 35,
+        floors: 5,
+        capacity: 1200,
+        occupancy: 78,
+        temperatureF: 70.8,
+        powerKw: 142.5,
+        airQualityAqi: 24,
+        activeLabs: ['AI & Neural Systems Lab', 'Advanced Networks Lab', 'Robotics Innovation Bay', 'Cloud Compute Center'],
+        maintenanceAlerts: 0,
+        securityStatus: 'NORMAL',
+        description: 'Primary computational research hub housing high-density servers, GPU clusters, and tiered interactive lecture halls.',
+        imageUrl: 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=800&q=80',
+      },
+      {
+        id: 'node_admin',
+        name: 'Institutional Administration & Chancellery Tower',
+        code: 'BLD-ADMIN',
+        category: 'ADMIN',
+        x: 62,
+        y: 22,
+        floors: 8,
+        capacity: 650,
+        occupancy: 52,
+        temperatureF: 72.1,
+        powerKw: 88.0,
+        airQualityAqi: 19,
+        activeLabs: ['Executive Operations Council', 'Registrar Records Vault', 'Academic Senate Hall'],
+        maintenanceAlerts: 0,
+        securityStatus: 'NORMAL',
+        description: 'Central institutional administrative command, sovereign ownership office, and executive records.',
+        imageUrl: 'https://images.unsplash.com/photo-1541829070764-84a7d30dd3f3?auto=format&fit=crop&w=800&q=80',
+      },
+      {
+        id: 'node_science',
+        name: 'Applied Sciences & Nanotechnology Center',
+        code: 'BLD-SCI',
+        category: 'RESEARCH',
+        x: 75,
+        y: 52,
+        floors: 6,
+        capacity: 850,
+        occupancy: 64,
+        temperatureF: 68.5,
+        powerKw: 195.3,
+        airQualityAqi: 15,
+        activeLabs: ['Cleanroom Research Facility', 'Optics & Photonics Lab', 'Materials Characterization Unit'],
+        maintenanceAlerts: 0,
+        securityStatus: 'NORMAL',
+        description: 'Physical sciences facility equipped with positive-pressure cleanrooms and precision instrument bays.',
+        imageUrl: 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=800&q=80',
+      },
+      {
+        id: 'node_library',
+        name: 'Central Knowledge Commons & Digital Library',
+        code: 'BLD-LIB',
+        category: 'LIBRARY',
+        x: 48,
+        y: 62,
+        floors: 4,
+        capacity: 1500,
+        occupancy: 86,
+        temperatureF: 71.4,
+        powerKw: 64.2,
+        airQualityAqi: 22,
+        activeLabs: ['Digital Media Center', 'Collaborative Study Pods', 'Archives & Special Collections'],
+        maintenanceAlerts: 0,
+        securityStatus: 'NORMAL',
+        description: 'Four-level intellectual Commons with digital volumes, open study plazas, and 24-hour reading sanctuaries.',
+        imageUrl: 'https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=800&q=80',
+      },
+      {
+        id: 'node_sports',
+        name: 'Campus Athletics & Wellness Arena',
+        code: 'BLD-ATH',
+        category: 'SPORTS',
+        x: 18,
+        y: 68,
+        floors: 2,
+        capacity: 1800,
+        occupancy: 34,
+        temperatureF: 73.5,
+        powerKw: 78.4,
+        airQualityAqi: 28,
+        activeLabs: ['Aquatic Pool Complex', 'Biometrics & Fitness Center', 'Indoor Hardwood Courts'],
+        maintenanceAlerts: 0,
+        securityStatus: 'NORMAL',
+        description: 'Athletics pavilion, tournament swimming pool, and biomechanics human performance laboratory.',
+        imageUrl: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=800&q=80',
+      },
+      {
+        id: 'node_hostel',
+        name: 'University Residential Quarters & Student Living',
+        code: 'BLD-RES',
+        category: 'HOSTEL',
+        x: 82,
+        y: 78,
+        floors: 6,
+        capacity: 880,
+        occupancy: 92,
+        temperatureF: 72.8,
+        powerKw: 112.0,
+        airQualityAqi: 31,
+        activeLabs: ['Central Dining Refectory', 'Student Commons Hall', 'Residential Study Lounges'],
+        maintenanceAlerts: 0,
+        securityStatus: 'NORMAL',
+        description: 'Student residential quarters housing scholars with integrated dining facilities and collaborative lounges.',
+        imageUrl: 'https://images.unsplash.com/photo-1555854877-bab0e564b8d5?auto=format&fit=crop&w=800&q=80',
+      },
+    ];
+  }
+
+  public getDigitalTwinNodes(): DigitalTwinNode[] {
+    if (!this.data.digitalTwinNodes || this.data.digitalTwinNodes.length === 0) {
+      this.data.digitalTwinNodes = this.getDefaultDigitalTwinNodes();
+      this.scheduleSave();
+    }
+    return this.data.digitalTwinNodes;
+  }
+
+  public addDigitalTwinNode(node: Partial<DigitalTwinNode>): DigitalTwinNode {
+    const newNode: DigitalTwinNode = {
+      id: node.id || `node_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      name: node.name || 'New Campus Building',
+      code: node.code || `BLD-${Math.floor(100 + Math.random() * 900)}`,
+      category: node.category || 'COMPUTING',
+      x: typeof node.x === 'number' ? Math.max(0, Math.min(100, node.x)) : 50,
+      y: typeof node.y === 'number' ? Math.max(0, Math.min(100, node.y)) : 50,
+      floors: Number(node.floors) || 4,
+      capacity: Number(node.capacity) || 500,
+      occupancy: typeof node.occupancy === 'number' ? Math.max(0, Math.min(100, Number(node.occupancy))) : 60,
+      temperatureF: typeof node.temperatureF === 'number' ? Number(node.temperatureF) : 71.0,
+      powerKw: typeof node.powerKw === 'number' ? Number(node.powerKw) : 85.0,
+      airQualityAqi: typeof node.airQualityAqi === 'number' ? Number(node.airQualityAqi) : 25,
+      activeLabs: Array.isArray(node.activeLabs) ? node.activeLabs : ['Innovation Lab 1'],
+      maintenanceAlerts: typeof node.maintenanceAlerts === 'number' ? Number(node.maintenanceAlerts) : 0,
+      securityStatus: node.securityStatus || 'NORMAL',
+      description: node.description || 'Campus physical facility with IoT telemetry.',
+      imageUrl: node.imageUrl || '',
+      latitude: typeof node.latitude === 'number' ? node.latitude : 37.7749,
+      longitude: typeof node.longitude === 'number' ? node.longitude : -122.4194,
+      address: node.address || 'University Innovation Way',
+      weatherCondition: node.weatherCondition || 'Partly Cloudy',
+      weatherHumidity: typeof node.weatherHumidity === 'number' ? node.weatherHumidity : 52,
+      weatherWindMph: typeof node.weatherWindMph === 'number' ? node.weatherWindMph : 8.5,
+      weatherLastUpdated: node.weatherLastUpdated || new Date().toISOString(),
+      googleMapsUrl: node.googleMapsUrl || '',
+    };
+    if (!this.data.digitalTwinNodes) {
+      this.data.digitalTwinNodes = [];
+    }
+    this.data.digitalTwinNodes.push(newNode);
+    this.scheduleSave();
+    return newNode;
+  }
+
+  public updateDigitalTwinNode(id: string, updates: Partial<DigitalTwinNode>): DigitalTwinNode | null {
+    if (!this.data.digitalTwinNodes) return null;
+    const index = this.data.digitalTwinNodes.findIndex((n) => n.id === id);
+    if (index === -1) return null;
+    this.data.digitalTwinNodes[index] = {
+      ...this.data.digitalTwinNodes[index],
+      ...updates,
+      id: this.data.digitalTwinNodes[index].id, // preserve id
+    };
+    this.scheduleSave();
+    return this.data.digitalTwinNodes[index];
+  }
+
+  public deleteDigitalTwinNode(id: string): boolean {
+    if (!this.data.digitalTwinNodes) return false;
+    const initialLen = this.data.digitalTwinNodes.length;
+    this.data.digitalTwinNodes = this.data.digitalTwinNodes.filter((n) => n.id !== id);
+    if (this.data.digitalTwinNodes.length !== initialLen) {
+      this.scheduleSave();
+      return true;
+    }
+    return false;
   }
 
   // --- INSTITUTION HARD RESET ---

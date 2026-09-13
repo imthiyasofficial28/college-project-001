@@ -7,18 +7,21 @@ import { Input, Select } from '../ui/input.tsx';
 export const BootstrapSetupView: React.FC = () => {
   const { bootstrap } = useAuth();
 
-  const [institutionName, setInstitutionName] = useState('Apex Horizon University of Technology');
-  const [institutionCode, setInstitutionCode] = useState('AHUT');
+  // No random demo data prefilled - clean blank initial state
+  const [institutionName, setInstitutionName] = useState('');
+  const [institutionCode, setInstitutionCode] = useState('');
   const [institutionType, setInstitutionType] = useState('UNIVERSITY');
-  const [address, setAddress] = useState('Campus Boulevard, Silicon Valley, CA 94025');
-  const [contactEmail, setContactEmail] = useState('rector@apexhorizon.edu');
-  const [contactPhone, setContactPhone] = useState('+1 (555) 019-4820');
+  const [address, setAddress] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
 
-  const [ownerName, setOwnerName] = useState('Chancellor Alexander Vance');
-  const [ownerEmail, setOwnerEmail] = useState('chancellor@apexhorizon.edu');
-  const [ownerPassword, setOwnerPassword] = useState('Cuois@2025');
+  // Sovereign System Owner: Imthiyas
+  const [ownerName, setOwnerName] = useState('Imthiyas');
+  const [ownerEmail, setOwnerEmail] = useState('imthiyasofficial28@gmail.com');
+  const [ownerPassword, setOwnerPassword] = useState('');
 
-  const [template, setTemplate] = useState<'UNIVERSITY_ENTERPRISE' | 'EMPTY'>('UNIVERSITY_ENTERPRISE');
+  // Default to Clean Empty Slate as requested by user
+  const [template, setTemplate] = useState<'UNIVERSITY_ENTERPRISE' | 'EMPTY'>('EMPTY');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,17 +33,17 @@ export const BootstrapSetupView: React.FC = () => {
     try {
       await bootstrap({
         institution: {
-          name: institutionName,
-          code: institutionCode,
+          name: institutionName.trim() || 'Campus University',
+          code: institutionCode.trim() || 'CAMPUS',
           type: institutionType,
-          address,
-          contactEmail,
-          contactPhone,
+          address: address.trim(),
+          contactEmail: contactEmail.trim() || ownerEmail.trim(),
+          contactPhone: contactPhone.trim(),
         },
         owner: {
-          fullName: ownerName,
-          email: ownerEmail,
-          password: ownerPassword,
+          fullName: ownerName.trim() || 'Imthiyas',
+          email: ownerEmail.trim() || 'imthiyasofficial28@gmail.com',
+          password: ownerPassword.trim() || 'Cuois@2025',
         },
         template,
       });
@@ -71,6 +74,35 @@ export const BootstrapSetupView: React.FC = () => {
           </p>
         </div>
 
+        {/* Developer & Sovereign Ownership Banner */}
+        <div className="mb-6 p-5 rounded-2xl bg-gradient-to-r from-cyan-950/70 via-[#0B1528] to-blue-950/70 border border-cyan-500/40 shadow-xl relative overflow-hidden">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="px-2 py-0.5 rounded-md bg-cyan-500/20 text-cyan-300 text-[10px] font-mono font-bold uppercase tracking-wider border border-cyan-500/30">
+                  Lead Software Architect & Owner
+                </span>
+                <span className="text-[11px] font-mono text-emerald-400 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" /> Verified Sovereign
+                </span>
+              </div>
+              <h2 className="text-lg font-bold font-serif text-slate-100">
+                Completely Developed & Architected by Imthiyas
+              </h2>
+              <p className="text-xs text-slate-300 mt-1">
+                Sovereign System Owner: <strong className="text-cyan-400">Imthiyas</strong> • Official Contact: <a href="mailto:imthiyasofficial28@gmail.com" className="text-cyan-400 underline hover:text-cyan-300">imthiyasofficial28@gmail.com</a>
+              </p>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Zero random dummy data forced. You have full root governance to define your campus entities and digital twin physical assets.
+              </p>
+            </div>
+            <div className="p-3 rounded-xl bg-[#080D1A] border border-cyan-500/30 text-center shrink-0">
+              <span className="text-[10px] font-mono text-slate-400 uppercase block">Platform Authority</span>
+              <span className="text-xs font-mono font-bold text-cyan-400">IMTHIYAS ROOT</span>
+            </div>
+          </div>
+        </div>
+
         {/* Wizard Card */}
         <div className="bg-[#0E1524] border border-slate-700/80 rounded-2xl shadow-2xl p-6 sm:p-8">
           {error && (
@@ -95,7 +127,7 @@ export const BootstrapSetupView: React.FC = () => {
                     required
                     value={institutionName}
                     onChange={(e) => setInstitutionName(e.target.value)}
-                    placeholder="e.g. Apex Horizon University"
+                    placeholder="Enter your campus / university name..."
                   />
                 </div>
                 <div>
@@ -104,7 +136,7 @@ export const BootstrapSetupView: React.FC = () => {
                     required
                     value={institutionCode}
                     onChange={(e) => setInstitutionCode(e.target.value.toUpperCase())}
-                    placeholder="e.g. AHUT"
+                    placeholder="e.g. CUOIS"
                   />
                 </div>
                 <div>
@@ -126,7 +158,7 @@ export const BootstrapSetupView: React.FC = () => {
                     icon={MapPin}
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
-                    placeholder="Street, City, Postal Code"
+                    placeholder="Street, City, Country"
                   />
                 </div>
                 <div>
@@ -136,6 +168,7 @@ export const BootstrapSetupView: React.FC = () => {
                     type="email"
                     value={contactEmail}
                     onChange={(e) => setContactEmail(e.target.value)}
+                    placeholder="contact@campus.edu"
                   />
                 </div>
                 <div>
@@ -144,6 +177,7 @@ export const BootstrapSetupView: React.FC = () => {
                     icon={Phone}
                     value={contactPhone}
                     onChange={(e) => setContactPhone(e.target.value)}
+                    placeholder="+1 (555) 010-0000"
                   />
                 </div>
               </div>
@@ -154,7 +188,7 @@ export const BootstrapSetupView: React.FC = () => {
               <div className="flex items-center gap-2.5 pb-2 mb-4 border-b border-slate-800">
                 <ShieldCheck className="w-4 h-4 text-cyan-400" />
                 <h2 className="text-sm font-semibold text-slate-200 tracking-wide uppercase font-mono">
-                  2. Root Sovereign System Owner (Chancellor / Rector)
+                  2. Root Sovereign System Owner
                 </h2>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -165,7 +199,7 @@ export const BootstrapSetupView: React.FC = () => {
                     icon={User}
                     value={ownerName}
                     onChange={(e) => setOwnerName(e.target.value)}
-                    placeholder="e.g. Chancellor Alexander Vance"
+                    placeholder="Imthiyas (System Owner)"
                   />
                 </div>
                 <div>
@@ -176,7 +210,7 @@ export const BootstrapSetupView: React.FC = () => {
                     icon={Mail}
                     value={ownerEmail}
                     onChange={(e) => setOwnerEmail(e.target.value)}
-                    placeholder="admin@institution.edu"
+                    placeholder="imthiyasofficial28@gmail.com"
                   />
                 </div>
                 <div>
@@ -187,7 +221,8 @@ export const BootstrapSetupView: React.FC = () => {
                     icon={Lock}
                     value={ownerPassword}
                     onChange={(e) => setOwnerPassword(e.target.value)}
-                    helperText="Enforced 8+ chars with salted derivation."
+                    placeholder="Set master access password"
+                    helperText="Enforced salted PBKDF2 derivation."
                   />
                 </div>
               </div>

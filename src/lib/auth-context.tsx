@@ -5,7 +5,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User, AuthSession, Institution, UserRole, Notification, SystemTelemetry } from '../types/index.ts';
-import { api, getStoredToken, setStoredToken } from './api.ts';
+import { api, getStoredToken, setStoredToken, getLastSavedTimestamp, recordLocalMemorySync } from './api.ts';
 
 interface AuthContextType {
   user: User | null;
@@ -18,12 +18,19 @@ interface AuthContextType {
   notifications: Notification[];
   unreadNotifsCount: number;
   liveTelemetry: SystemTelemetry | null;
+  lastSavedAt: Date | null;
+  syncStatus: 'synced' | 'saving' | 'idle';
   hasPermission: (permission: string) => boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (identifierOrEmail: string, password: string) => Promise<void>;
+  personalizedEntry: (fullName: string, role: UserRole, password?: string) => Promise<void>;
+  updateUserName: (fullName: string) => Promise<void>;
+  updateFullProfile: (data: Partial<User>) => Promise<void>;
+  changePassword: (data: { currentPassword?: string; newPassword: string }) => Promise<void>;
   logout: () => Promise<void>;
   switchPerspective: (targetRole: UserRole) => Promise<void>;
   bootstrap: (payload: { institution: any; owner: any; template?: string }) => Promise<void>;
   refreshState: () => Promise<void>;
+  syncToLocalMemory: () => Promise<void>;
   markNotificationAsRead: (id: string) => Promise<void>;
   markAllNotificationsAsRead: () => Promise<void>;
   resetInstitution: () => Promise<void>;
@@ -40,6 +47,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [rolePermissions, setRolePermissions] = useState<string[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [liveTelemetry, setLiveTelemetry] = useState<SystemTelemetry | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(() => {
+    const raw = getLastSavedTimestamp();
+    return raw ? new Date(raw) : new Date();
+  });
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'saving' | 'idle'>('synced');
 
   const activeRole: UserRole = user?.role || 'STUDENT';
 
@@ -96,7 +108,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await checkBootstrap();
     await fetchUserData();
     await fetchAuxiliary();
+    recordLocalMemorySync();
   }, [checkBootstrap, fetchUserData, fetchAuxiliary]);
+
+  const syncToLocalMemory = useCallback(async () => {
+    setSyncStatus('saving');
+    try {
+      const iso = recordLocalMemorySync();
+      setLastSavedAt(new Date(iso));
+      await refreshState();
+      setTimeout(() => {
+        setSyncStatus('synced');
+      }, 350);
+    } catch (err) {
+      console.warn('[CUOIS Storage] Local sync warning:', err);
+      setSyncStatus('synced');
+    }
+  }, [refreshState]);
+
+  useEffect(() => {
+    const handleDataSaved = (e: Event) => {
+      const customEvent = e as CustomEvent<{ timestamp: string }>;
+      setSyncStatus('saving');
+      const ts = customEvent.detail?.timestamp ? new Date(customEvent.detail.timestamp) : new Date();
+      setTimeout(() => {
+        setLastSavedAt(ts);
+        setSyncStatus('synced');
+      }, 300);
+    };
+
+    window.addEventListener('cuois:data-saved', handleDataSaved);
+    return () => {
+      window.removeEventListener('cuois:data-saved', handleDataSaved);
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -127,13 +172,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [checkBootstrap, fetchUserData, fetchAuxiliary]);
 
-  const login = async (email: string, password: string) => {
-    const res = await api.login({ email, password });
+  const login = async (identifierOrEmail: string, password: string) => {
+    const res = await api.login({ identifier: identifierOrEmail, password });
     setStoredToken(res.session.token);
     setUser(res.session.user);
     setSession(res.session);
     setRolePermissions(res.session.rolePermissions || []);
     await fetchAuxiliary();
+  };
+
+  const personalizedEntry = async (fullName: string, role: UserRole, password?: string) => {
+    const res = await api.personalizedEntry({ fullName, role, password });
+    setStoredToken(res.session.token);
+    setUser(res.session.user);
+    setSession(res.session);
+    setRolePermissions(res.session.rolePermissions || []);
+    await fetchAuxiliary();
+  };
+
+  const updateUserName = async (fullName: string) => {
+    const res = await api.updateProfile({ fullName });
+    setUser(res.user);
+    if (session) {
+      setSession({ ...session, user: res.user });
+    }
+    recordLocalMemorySync();
+  };
+
+  const updateFullProfile = async (data: Partial<User>) => {
+    const res = await api.updateProfile(data);
+    setUser(res.user);
+    if (session) {
+      setSession({ ...session, user: res.user });
+    }
+    recordLocalMemorySync();
+  };
+
+  const changePassword = async (data: { currentPassword?: string; newPassword: string }) => {
+    await api.changePassword(data);
   };
 
   const logout = async () => {
@@ -215,12 +291,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         notifications,
         unreadNotifsCount,
         liveTelemetry,
+        lastSavedAt,
+        syncStatus,
         hasPermission,
         login,
+        personalizedEntry,
+        updateUserName,
+        updateFullProfile,
+        changePassword,
         logout,
         switchPerspective,
         bootstrap,
         refreshState,
+        syncToLocalMemory,
         markNotificationAsRead,
         markAllNotificationsAsRead,
         resetInstitution,

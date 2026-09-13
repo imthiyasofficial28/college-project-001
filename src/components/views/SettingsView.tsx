@@ -39,6 +39,58 @@ export const SettingsView: React.FC = () => {
         </p>
       </div>
 
+      {/* Developer & Sovereign Ownership Credentials Card */}
+      <div className="p-5 rounded-xl bg-gradient-to-br from-[#091122] via-[#0E1628] to-[#080D1A] border border-cyan-500/40 shadow-xl space-y-4 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="flex items-center justify-between pb-3 border-b border-slate-800 relative z-10">
+          <div className="flex items-center gap-2">
+            <span className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+              <ShieldAlert className="w-4 h-4" />
+            </span>
+            <span className="text-xs font-mono font-semibold uppercase tracking-wider text-slate-200">
+              Lead Software Architect & Sovereign Ownership Dossier
+            </span>
+          </div>
+          <Badge variant="cyan" size="sm" className="font-bold font-mono">
+            VERIFIED SOVEREIGN
+          </Badge>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs relative z-10">
+          <div className="p-3.5 rounded-lg bg-[#080D18] border border-cyan-500/20">
+            <span className="text-slate-400 font-mono text-[11px] block mb-1 uppercase tracking-wider">
+              System Developer:
+            </span>
+            <div className="text-base font-bold font-serif text-slate-100">Imthiyas</div>
+            <p className="text-[11px] text-slate-400 mt-0.5">Full-stack platform engineer & architect</p>
+          </div>
+          <div className="p-3.5 rounded-lg bg-[#080D18] border border-cyan-500/20">
+            <span className="text-slate-400 font-mono text-[11px] block mb-1 uppercase tracking-wider">
+              Sovereign System Owner:
+            </span>
+            <div className="text-base font-bold font-serif text-cyan-400">Imthiyas</div>
+            <p className="text-[11px] text-slate-400 mt-0.5">Root sovereign administrative authority</p>
+          </div>
+          <div className="p-3.5 rounded-lg bg-[#080D18] border border-cyan-500/20">
+            <span className="text-slate-400 font-mono text-[11px] block mb-1 uppercase tracking-wider">
+              Official Inquiries:
+            </span>
+            <a
+              href="mailto:imthiyasofficial28@gmail.com"
+              className="text-cyan-400 hover:text-cyan-300 underline font-mono text-xs block truncate"
+            >
+              imthiyasofficial28@gmail.com
+            </a>
+            <p className="text-[11px] text-slate-400 mt-0.5">Direct sovereign developer support</p>
+          </div>
+        </div>
+
+        <div className="p-3 rounded-lg bg-[#060A14] border border-slate-800/80 text-[11px] text-slate-400 leading-relaxed relative z-10">
+          <strong className="text-slate-200">Architectural Note:</strong> This Campus Unified Operations & Intelligence System (CUOIS) is completely developed by <strong className="text-slate-200">Imthiyas</strong> and owned by <strong className="text-cyan-400">Imthiyas</strong>. All system modules, including the physical Campus Digital Twin, are built with comprehensive CRUD sovereignty (Add, Modify, Remove, or Delete any node or record) without unrequested random mock datasets.
+        </div>
+      </div>
+
       {/* Institution Identity */}
       <div className="p-5 rounded-xl bg-[#0A101C] border border-slate-800 space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">

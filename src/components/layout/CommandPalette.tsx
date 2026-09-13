@@ -19,6 +19,7 @@ import {
   Settings,
   X,
   ArrowRight,
+  User,
 } from 'lucide-react';
 import { NavView } from './Sidebar.tsx';
 
@@ -36,6 +37,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const [query, setQuery] = useState('');
 
   const commands = [
+    { label: 'My Personal Profile & Security Credentials (Maintain ID & Password)', view: 'profile' as NavView, icon: User, category: 'Personal' },
+    { label: 'Campus Digital Twin (Spatial Telemetry & Sensors)', view: 'digital-twin' as NavView, icon: Building2, category: 'Navigation' },
+    { label: 'Institution Data Control (Master Configuration)', view: 'institution-config' as NavView, icon: Settings, category: 'Administration' },
+    { label: 'Confidential Whistleblower & Decryption Desk', view: 'confidential-reports' as NavView, icon: ShieldAlert, category: 'Governance' },
+    { label: 'Campus Surveys & Anonymous Polling', view: 'surveys' as NavView, icon: MessageSquareWarning, category: 'Governance' },
+    { label: 'Student Academic Risk Intelligence Radar', view: 'faculty-students-risk' as NavView, icon: Users, category: 'Academic' },
+    { label: 'Student Academic Pulse (Student Cockpit)', view: 'student-dashboard' as NavView, icon: GraduationCap, category: 'Academic' },
+    { label: 'Faculty Teaching Operations Cockpit', view: 'faculty-dashboard' as NavView, icon: Users, category: 'Academic' },
+    { label: 'Course Curriculum, Hall Tickets & Marks', view: 'student-academics' as NavView, icon: GraduationCap, category: 'Academic' },
     { label: 'Command Center (Executive Dashboard)', view: 'dashboard' as NavView, icon: LayoutDashboard, category: 'Navigation' },
     { label: 'Campus & Facilities Map', view: 'infrastructure' as NavView, icon: Building2, category: 'Navigation' },
     { label: 'Students Directory & Academic Standing', view: 'students' as NavView, icon: GraduationCap, category: 'Navigation' },

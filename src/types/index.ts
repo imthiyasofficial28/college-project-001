@@ -44,6 +44,7 @@ export interface User {
   departmentId?: string;
   phone?: string;
   avatarUrl?: string;
+  bio?: string;
   mfaEnabled: boolean;
   failedLoginAttempts: number;
   lockedUntil?: string | null;
@@ -64,6 +65,9 @@ export interface Institution {
   name: string;
   code: string;
   tagline: string;
+  motto?: string;
+  chancellorName?: string;
+  domain?: string;
   establishedYear: number;
   address: string;
   timezone: string;
@@ -119,11 +123,13 @@ export interface Department {
   code: string;
   headOfDepartmentId?: string;
   headOfDepartmentName?: string;
+  hodName?: string;
   description: string;
   buildingId?: string;
   programsCount?: number;
   facultyCount?: number;
   studentCount?: number;
+  status?: 'ACTIVE' | 'INACTIVE';
 }
 
 export interface Program {
@@ -173,6 +179,7 @@ export interface Subject {
   theoryHours: number;
   labHours: number;
   isElective: boolean;
+  status?: 'ACTIVE' | 'INACTIVE';
 }
 
 export interface Student {
@@ -278,6 +285,7 @@ export interface Assignment {
   dueDate: string;
   status: 'ACTIVE' | 'EVALUATED' | 'ARCHIVED';
   submissionsCount?: number;
+  createdAt?: string;
 }
 
 export interface Examination {
@@ -584,5 +592,113 @@ export interface ChatRolePreset {
   description: string;
   systemInstruction: string;
   suggestedPrompts: string[];
+}
+
+// --- SURVEY SYSTEM (Anonymous vs Identified) ---
+export interface SurveyQuestion {
+  id: string;
+  text: string;
+  type: 'RATING' | 'MULTIPLE_CHOICE' | 'TEXT' | 'BOOLEAN';
+  options?: string[];
+  required: boolean;
+  minRating?: number;
+  maxRating?: number;
+}
+
+export interface SurveyResponse {
+  id: string;
+  surveyId: string;
+  respondentRole: UserRole;
+  // If isAnonymous is true on the survey, respondentUserId is null and never recorded
+  respondentUserId?: string | null;
+  answers: {
+    questionId: string;
+    value: string | number | boolean;
+  }[];
+  submittedAt: string;
+}
+
+export interface Survey {
+  id: string;
+  title: string;
+  description: string;
+  targetAudience: 'ALL' | 'STUDENTS' | 'FACULTY' | 'STAFF' | 'DEPARTMENT';
+  targetDepartmentId?: string;
+  isAnonymous: boolean; // ANONYMOUS: identity cannot be viewed by ANY role, including System Owner
+  status: 'ACTIVE' | 'DRAFT' | 'CLOSED';
+  startDate: string;
+  endDate: string;
+  expiresAt?: string;
+  questions: SurveyQuestion[];
+  responsesCount: number;
+  authorId: string;
+  authorName: string;
+  createdAt: string;
+}
+
+// --- CONFIDENTIAL REPORTING / PRIVATE GRIEVANCES ---
+// Distinct from anonymous survey: reporter identity is encrypted and hidden from normal staff/faculty/students.
+// ONLY System Owner can decrypt & view reporter identity with audited reason.
+export interface ConfidentialReport {
+  id: string;
+  ticketCode: string;
+  category: 'HARASSMENT' | 'ACADEMIC_INTEGRITY' | 'SAFETY_HAZARD' | 'FINANCIAL_FRAUD' | 'MISCONDUCT' | 'OTHER';
+  subject: string;
+  description: string;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  status: 'SUBMITTED' | 'UNDER_REVIEW' | 'INVESTIGATING' | 'RESOLVED' | 'DISMISSED';
+  reporterUserId: string;
+  reporterName: string;
+  reporterRole: UserRole;
+  reporterRevealed: boolean;
+  revealedBy?: string;
+  revealedAt?: string;
+  resolutionNotes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// --- STUDENT ACADEMIC RISK INTELLIGENCE ---
+export interface StudentRiskIndicator {
+  studentId: string;
+  studentName: string;
+  registrationNumber: string;
+  departmentName: string;
+  sectionName: string;
+  riskLevel: 'GREEN' | 'YELLOW' | 'RED';
+  attendancePercentage: number;
+  assignmentCompletionRate: number;
+  cgpa: number;
+  riskFactors: string[];
+  recommendedAction: string;
+}
+
+// --- DIGITAL TWIN PHYSICAL ASSET TELEMETRY ---
+export interface DigitalTwinNode {
+  id: string;
+  name: string;
+  code: string;
+  category: 'COMPUTING' | 'ADMIN' | 'RESEARCH' | 'LIBRARY' | 'SPORTS' | 'HOSTEL' | 'PERIMETER';
+  x: number; // percentage on isometric map (0-100)
+  y: number; // percentage on isometric map (0-100)
+  floors: number;
+  capacity: number;
+  occupancy: number; // percentage (0-100)
+  temperatureF: number;
+  powerKw: number;
+  airQualityAqi: number;
+  activeLabs: string[];
+  maintenanceAlerts: number;
+  securityStatus: 'NORMAL' | 'ELEVATED' | 'LOCKED';
+  description: string;
+  imageUrl?: string;
+  latitude?: number;
+  longitude?: number;
+  address?: string;
+  weatherCondition?: string;
+  weatherHumidity?: number;
+  weatherWindMph?: number;
+  weatherLastUpdated?: string;
+  googleMapsUrl?: string;
 }
 
