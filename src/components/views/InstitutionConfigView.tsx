@@ -40,7 +40,7 @@ import { Input, Textarea, Select } from '../ui/input.tsx';
 type MasterTab = 'INSTITUTION' | 'DEPARTMENTS' | 'PROGRAMS' | 'ACADEMIC_YEARS' | 'BUILDINGS_ROOMS' | 'SUBJECTS';
 
 export const InstitutionConfigView: React.FC = () => {
-  const { markDataSaved } = useAuth();
+  const { markDataSaved, updateInstitutionProfile } = useAuth();
 
   const [activeTab, setActiveTab] = useState<MasterTab>('INSTITUTION');
   const [searchTerm, setSearchTerm] = useState('');
@@ -128,7 +128,7 @@ export const InstitutionConfigView: React.FC = () => {
   const handleSaveInstitution = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const updated = await api.updateInstitution({
+      const updated = await updateInstitutionProfile({
         name: instName,
         code: instCode,
         chancellorName: instChancellor,
@@ -137,7 +137,6 @@ export const InstitutionConfigView: React.FC = () => {
         domain: instDomain,
       });
       setInstitution(updated);
-      markDataSaved();
       setSaveSuccessMsg('Institution profile configuration updated and saved to local memory.');
       setTimeout(() => setSaveSuccessMsg(null), 3000);
     } catch (err) {

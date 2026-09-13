@@ -123,7 +123,7 @@ app.get('/api/institution', (req, res) => {
   res.json(db.getInstitution());
 });
 
-app.put('/api/institution', requireRole(['SYSTEM_OWNER', 'ADMINISTRATOR']), (req, res) => {
+app.put('/api/institution', authenticate, requireRole(['SYSTEM_OWNER', 'ADMINISTRATOR']), (req: AuthenticatedRequest, res) => {
   try {
     const updated = db.updateInstitution(req.body);
     broadcastRealtimeEvent('INSTITUTION_UPDATED', updated);

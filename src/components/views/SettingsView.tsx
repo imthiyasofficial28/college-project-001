@@ -1,16 +1,143 @@
-import React, { useState } from 'react';
-import { Settings, ShieldAlert, Building2, Database, AlertOctagon, RotateCcw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import {
+  Settings,
+  ShieldAlert,
+  Building2,
+  Database,
+  AlertOctagon,
+  RotateCcw,
+  Edit2,
+  Save,
+  X,
+  CheckCircle2,
+  Lock,
+  ShieldCheck,
+  Globe,
+  Mail,
+  Phone,
+  Calendar,
+  School,
+  Sparkles,
+} from 'lucide-react';
 import { useAuth } from '../../lib/auth-context.tsx';
 import { Button } from '../ui/button.tsx';
-import { Input } from '../ui/input.tsx';
+import { Input, Select, Textarea } from '../ui/input.tsx';
 import { Badge } from '../ui/badge.tsx';
 import { Modal } from '../ui/modal.tsx';
 
 export const SettingsView: React.FC = () => {
-  const { institution, liveTelemetry, resetInstitution } = useAuth();
+  const { institution, liveTelemetry, resetInstitution, updateInstitutionProfile, activeRole, hasPermission } = useAuth();
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [confirmWord, setConfirmWord] = useState('');
   const [isResetting, setIsResetting] = useState(false);
+
+  // Institutional Entity Profile edit state
+  const canEditInstitution =
+    activeRole === 'SYSTEM_OWNER' ||
+    activeRole === 'ADMINISTRATOR' ||
+    hasPermission('SYSTEM_OWNER') ||
+    hasPermission('CAMPUS_ADMIN');
+
+  const [isEditingInst, setIsEditingInst] = useState(false);
+  const [isSavingInst, setIsSavingInst] = useState(false);
+  const [instSaveSuccess, setInstSaveSuccess] = useState<string | null>(null);
+  const [instSaveError, setInstSaveError] = useState<string | null>(null);
+
+  const [instForm, setInstForm] = useState({
+    name: institution?.name || '',
+    code: institution?.code || '',
+    tagline: institution?.tagline || '',
+    type: (institution?.type || 'UNIVERSITY') as string,
+    address: institution?.address || '',
+    contactEmail: institution?.contactEmail || '',
+    contactPhone: institution?.contactPhone || '',
+    website: institution?.website || '',
+    establishedYear: institution?.establishedYear || new Date().getFullYear(),
+    accreditation: institution?.accreditation || 'Accredited Sovereign Campus Institution',
+    academicCalendarType: (institution?.academicCalendarType || 'SEMESTER') as 'SEMESTER' | 'TRIMESTER' | 'ANNUAL',
+    timezone: institution?.timezone || 'UTC',
+  });
+
+  useEffect(() => {
+    if (!isEditingInst && institution) {
+      setInstForm({
+        name: institution.name || '',
+        code: institution.code || '',
+        tagline: institution.tagline || '',
+        type: (institution.type || 'UNIVERSITY') as string,
+        address: institution.address || '',
+        contactEmail: institution.contactEmail || '',
+        contactPhone: institution.contactPhone || '',
+        website: institution.website || '',
+        establishedYear: institution.establishedYear || new Date().getFullYear(),
+        accreditation: institution.accreditation || 'Accredited Sovereign Campus Institution',
+        academicCalendarType: (institution.academicCalendarType || 'SEMESTER') as 'SEMESTER' | 'TRIMESTER' | 'ANNUAL',
+        timezone: institution.timezone || 'UTC',
+      });
+    }
+  }, [institution, isEditingInst]);
+
+  const handleStartEdit = () => {
+    if (!canEditInstitution) return;
+    setInstSaveError(null);
+    setInstSaveSuccess(null);
+    if (institution) {
+      setInstForm({
+        name: institution.name || '',
+        code: institution.code || '',
+        tagline: institution.tagline || '',
+        type: (institution.type || 'UNIVERSITY') as string,
+        address: institution.address || '',
+        contactEmail: institution.contactEmail || '',
+        contactPhone: institution.contactPhone || '',
+        website: institution.website || '',
+        establishedYear: institution.establishedYear || new Date().getFullYear(),
+        accreditation: institution.accreditation || 'Accredited Sovereign Campus Institution',
+        academicCalendarType: (institution.academicCalendarType || 'SEMESTER') as 'SEMESTER' | 'TRIMESTER' | 'ANNUAL',
+        timezone: institution.timezone || 'UTC',
+      });
+    }
+    setIsEditingInst(true);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditingInst(false);
+    setInstSaveError(null);
+  };
+
+  const handleSaveInstitution = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!instForm.name.trim() || !instForm.code.trim()) {
+      setInstSaveError('Institution Official Name and Code/Acronym are required.');
+      return;
+    }
+
+    setIsSavingInst(true);
+    setInstSaveError(null);
+    try {
+      await updateInstitutionProfile({
+        name: instForm.name.trim(),
+        code: instForm.code.trim().toUpperCase(),
+        tagline: instForm.tagline.trim(),
+        type: instForm.type as any,
+        address: instForm.address.trim(),
+        contactEmail: instForm.contactEmail.trim(),
+        contactPhone: instForm.contactPhone.trim(),
+        website: instForm.website.trim(),
+        establishedYear: Number(instForm.establishedYear) || new Date().getFullYear(),
+        accreditation: instForm.accreditation.trim(),
+        academicCalendarType: instForm.academicCalendarType,
+        timezone: instForm.timezone.trim(),
+      });
+      setIsEditingInst(false);
+      setInstSaveSuccess('Institutional entity profile successfully updated and synchronized across all campus systems.');
+      setTimeout(() => setInstSaveSuccess(null), 4000);
+    } catch (err: any) {
+      setInstSaveError(err.message || 'Failed to update institutional entity profile.');
+    } finally {
+      setIsSavingInst(false);
+    }
+  };
 
   const handleExecuteReset = async () => {
     if (confirmWord !== 'RESET') {
@@ -91,26 +218,329 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Institution Identity */}
-      <div className="p-5 rounded-xl bg-[#0A101C] border border-slate-800 space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-          <div className="flex items-center gap-2">
-            <Building2 className="w-4 h-4 text-cyan-400" />
-            <span className="text-xs font-mono font-semibold uppercase tracking-wider text-slate-200">
-              Institutional Entity Profile
-            </span>
+      {/* Institutional Entity Profile Card with Live Editing & Access Control */}
+      <div className="p-5 sm:p-6 rounded-xl bg-[#0A101C] border border-slate-800 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+              <Building2 className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-mono font-bold uppercase tracking-wider text-slate-100">
+                  Institutional Entity Profile
+                </h2>
+                <Badge variant="info" size="sm">
+                  {institution?.type || 'UNIVERSITY'}
+                </Badge>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Official accreditation, naming, legal contact parameters, and academic calendar framework.
+              </p>
+            </div>
           </div>
-          <Badge variant="info" size="sm">
-            {institution?.type || 'UNIVERSITY'}
-          </Badge>
+
+          <div className="flex items-center gap-2">
+            {canEditInstitution ? (
+              <Badge variant="cyan" size="sm" className="font-mono text-[11px] gap-1">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                SOVEREIGN ACCESS
+              </Badge>
+            ) : (
+              <Badge variant="outline" size="sm" className="font-mono text-[11px] text-amber-400 border-amber-500/40 gap-1">
+                <Lock className="w-3.5 h-3.5" />
+                RESTRICTED ACCESS
+              </Badge>
+            )}
+
+            {!isEditingInst && canEditInstitution && (
+              <Button
+                variant="primary"
+                size="sm"
+                icon={Edit2}
+                onClick={handleStartEdit}
+                className="font-mono text-xs"
+              >
+                Edit Entity Profile
+              </Button>
+            )}
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Input label="Institution Name" disabled value={institution?.name || ''} />
-          <Input label="Institution Code" disabled value={institution?.code || ''} />
-          <Input label="Physical Address" disabled value={institution?.address || ''} />
-          <Input label="Emergency Contact Phone" disabled value={institution?.contactPhone || ''} />
-        </div>
+        {/* Success Alert */}
+        {instSaveSuccess && (
+          <div className="p-3.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2 animate-fadeIn">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+            <span>{instSaveSuccess}</span>
+          </div>
+        )}
+
+        {/* Error Alert */}
+        {instSaveError && (
+          <div className="p-3.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 animate-fadeIn">
+            <AlertOctagon className="w-4 h-4 shrink-0 text-rose-400" />
+            <span>{instSaveError}</span>
+          </div>
+        )}
+
+        {/* Access Warning for Unauthorized Roles */}
+        {!canEditInstitution && (
+          <div className="p-3.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-center gap-2">
+            <Lock className="w-4 h-4 shrink-0 text-amber-400" />
+            <span>
+              You are currently viewing with <strong>{activeRole}</strong> credentials. Modifying institutional entity configurations requires <strong>System Owner</strong> or <strong>Campus Administrator</strong> privileges.
+            </span>
+          </div>
+        )}
+
+        {/* Form: Edit Mode */}
+        {isEditingInst ? (
+          <form onSubmit={handleSaveInstitution} className="space-y-6 pt-2">
+            {/* Section 1: Identity & Classification */}
+            <div className="space-y-3">
+              <div className="text-[11px] font-mono font-semibold uppercase tracking-wider text-cyan-400 border-b border-slate-800/80 pb-1.5 flex items-center gap-1.5">
+                <School className="w-3.5 h-3.5" />
+                1. Institutional Identity & Designation
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <Input
+                  label="Institution Full Name"
+                  required
+                  value={instForm.name}
+                  onChange={(e) => setInstForm({ ...instForm, name: e.target.value })}
+                  placeholder="e.g. Cambridge Global University"
+                />
+                <Input
+                  label="Institution Code / Acronym"
+                  required
+                  value={instForm.code}
+                  onChange={(e) => setInstForm({ ...instForm, code: e.target.value })}
+                  placeholder="e.g. CGU"
+                />
+                <Select
+                  label="Entity Classification"
+                  value={instForm.type}
+                  onChange={(e) => setInstForm({ ...instForm, type: e.target.value })}
+                  options={[
+                    { value: 'UNIVERSITY', label: 'Autonomous University' },
+                    { value: 'COLLEGE', label: 'Degree College' },
+                    { value: 'POLYTECHNIC', label: 'Polytechnic Institute' },
+                    { value: 'RESEARCH_CAMPUS', label: 'Research Campus / Institute' },
+                    { value: 'INSTITUTE', label: 'Specialized Institute' },
+                    { value: 'SCHOOL', label: 'Collegiate School' },
+                  ]}
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input
+                  label="Sovereign Tagline / Motto"
+                  value={instForm.tagline}
+                  onChange={(e) => setInstForm({ ...instForm, tagline: e.target.value })}
+                  placeholder="e.g. Knowledge, Sovereign Intellect & Humanity"
+                />
+                <Input
+                  label="Accreditation Authority"
+                  value={instForm.accreditation}
+                  onChange={(e) => setInstForm({ ...instForm, accreditation: e.target.value })}
+                  placeholder="e.g. Sovereign Higher Education Accreditation Council (SHEAC)"
+                />
+              </div>
+            </div>
+
+            {/* Section 2: Contact & Location */}
+            <div className="space-y-3">
+              <div className="text-[11px] font-mono font-semibold uppercase tracking-wider text-cyan-400 border-b border-slate-800/80 pb-1.5 flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5" />
+                2. Contact Vectors & Physical Location
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <Input
+                  label="Official Administrative Email"
+                  type="email"
+                  value={instForm.contactEmail}
+                  onChange={(e) => setInstForm({ ...instForm, contactEmail: e.target.value })}
+                  placeholder="e.g. contact@cgu.edu"
+                  icon={Mail}
+                />
+                <Input
+                  label="Emergency & Operations Phone"
+                  value={instForm.contactPhone}
+                  onChange={(e) => setInstForm({ ...instForm, contactPhone: e.target.value })}
+                  placeholder="e.g. +1 (555) 019-4820"
+                  icon={Phone}
+                />
+                <Input
+                  label="Official Web Portal URL"
+                  value={instForm.website}
+                  onChange={(e) => setInstForm({ ...instForm, website: e.target.value })}
+                  placeholder="e.g. https://cgu.edu"
+                  icon={Globe}
+                />
+              </div>
+              <Input
+                label="Physical Campus Command Address"
+                value={instForm.address}
+                onChange={(e) => setInstForm({ ...instForm, address: e.target.value })}
+                placeholder="e.g. 742 Cambridge Innovation Corridor, Command Sector 4"
+              />
+            </div>
+
+            {/* Section 3: Governance & Calendar System */}
+            <div className="space-y-3">
+              <div className="text-[11px] font-mono font-semibold uppercase tracking-wider text-cyan-400 border-b border-slate-800/80 pb-1.5 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5" />
+                3. Governance Framework & Calendar Rhythm
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <Input
+                  label="Year Established"
+                  type="number"
+                  value={instForm.establishedYear}
+                  onChange={(e) => setInstForm({ ...instForm, establishedYear: parseInt(e.target.value) || 2025 })}
+                  placeholder="2025"
+                />
+                <Select
+                  label="Academic Calendar Rhythm"
+                  value={instForm.academicCalendarType}
+                  onChange={(e) => setInstForm({ ...instForm, academicCalendarType: e.target.value as any })}
+                  options={[
+                    { value: 'SEMESTER', label: 'Semester (2 cycles / year)' },
+                    { value: 'TRIMESTER', label: 'Trimester (3 cycles / year)' },
+                    { value: 'ANNUAL', label: 'Annual (1 cycle / year)' },
+                  ]}
+                />
+                <Input
+                  label="Operational Timezone"
+                  value={instForm.timezone}
+                  onChange={(e) => setInstForm({ ...instForm, timezone: e.target.value })}
+                  placeholder="e.g. UTC, UTC-5 (EST), UTC+5:30 (IST)"
+                />
+              </div>
+            </div>
+
+            {/* Form Actions */}
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                icon={X}
+                onClick={handleCancelEdit}
+                disabled={isSavingInst}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                icon={Save}
+                isLoading={isSavingInst}
+              >
+                Save Entity Profile Changes
+              </Button>
+            </div>
+          </form>
+        ) : (
+          /* View Mode: Structured Presentation */
+          <div className="space-y-4 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs font-mono">
+              <div className="p-3.5 rounded-lg bg-[#080D18] border border-slate-800/80">
+                <span className="text-slate-500 uppercase text-[10px] tracking-wider block mb-1">
+                  Institution Name:
+                </span>
+                <div className="text-slate-100 font-bold font-sans text-sm">{institution?.name || 'Not specified'}</div>
+              </div>
+              <div className="p-3.5 rounded-lg bg-[#080D18] border border-slate-800/80">
+                <span className="text-slate-500 uppercase text-[10px] tracking-wider block mb-1">
+                  Institution Code:
+                </span>
+                <div className="text-cyan-400 font-bold text-sm">{institution?.code || 'Not set'}</div>
+              </div>
+              <div className="p-3.5 rounded-lg bg-[#080D18] border border-slate-800/80">
+                <span className="text-slate-500 uppercase text-[10px] tracking-wider block mb-1">
+                  Established Year:
+                </span>
+                <div className="text-slate-200 font-bold text-sm">{institution?.establishedYear || '2025'}</div>
+              </div>
+              <div className="p-3.5 rounded-lg bg-[#080D18] border border-slate-800/80">
+                <span className="text-slate-500 uppercase text-[10px] tracking-wider block mb-1">
+                  Academic Calendar:
+                </span>
+                <div className="text-slate-200 font-bold text-sm">{institution?.academicCalendarType || 'SEMESTER'}</div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs font-mono">
+              <div className="p-3.5 rounded-lg bg-[#080D18] border border-slate-800/80">
+                <span className="text-slate-500 uppercase text-[10px] tracking-wider block mb-1 flex items-center gap-1.5">
+                  <Mail className="w-3 h-3 text-cyan-400" />
+                  Official Contact Email:
+                </span>
+                <div className="text-slate-200 font-sans text-xs break-all">
+                  {institution?.contactEmail || 'Not configured'}
+                </div>
+              </div>
+              <div className="p-3.5 rounded-lg bg-[#080D18] border border-slate-800/80">
+                <span className="text-slate-500 uppercase text-[10px] tracking-wider block mb-1 flex items-center gap-1.5">
+                  <Phone className="w-3 h-3 text-emerald-400" />
+                  Operations & Emergency Phone:
+                </span>
+                <div className="text-slate-200 font-sans text-xs">
+                  {institution?.contactPhone || 'Not configured'}
+                </div>
+              </div>
+              <div className="p-3.5 rounded-lg bg-[#080D18] border border-slate-800/80">
+                <span className="text-slate-500 uppercase text-[10px] tracking-wider block mb-1 flex items-center gap-1.5">
+                  <Globe className="w-3 h-3 text-blue-400" />
+                  Official Web Portal:
+                </span>
+                <div className="text-slate-200 font-sans text-xs truncate">
+                  {institution?.website ? (
+                    <a href={institution.website} target="_blank" rel="noreferrer" className="text-cyan-400 underline hover:text-cyan-300">
+                      {institution.website}
+                    </a>
+                  ) : (
+                    'Not configured'
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-mono">
+              <div className="p-3.5 rounded-lg bg-[#080D18] border border-slate-800/80">
+                <span className="text-slate-500 uppercase text-[10px] tracking-wider block mb-1">
+                  Physical Campus Command Address:
+                </span>
+                <div className="text-slate-200 font-sans text-xs leading-relaxed">
+                  {institution?.address || 'Not configured'}
+                </div>
+              </div>
+              <div className="p-3.5 rounded-lg bg-[#080D18] border border-slate-800/80">
+                <span className="text-slate-500 uppercase text-[10px] tracking-wider block mb-1">
+                  Sovereign Motto & Tagline:
+                </span>
+                <div className="text-slate-300 italic font-serif text-xs leading-relaxed">
+                  "{institution?.tagline || institution?.motto || 'Sovereign Campus Unified Operations System'}"
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-lg bg-[#080D18] border border-slate-800/80 text-xs font-mono flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <span className="text-slate-500 uppercase text-[10px] tracking-wider block mb-0.5">
+                  Accreditation & Registry Status:
+                </span>
+                <span className="text-slate-300 text-xs font-sans">
+                  {institution?.accreditation || 'Autonomous Sovereign Campus OS'}
+                </span>
+              </div>
+              <div className="text-slate-500 text-[11px]">
+                Timezone: <span className="text-slate-300 font-mono">{institution?.timezone || 'UTC'}</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Telemetry Architecture */}
@@ -181,18 +611,29 @@ export const SettingsView: React.FC = () => {
           <Input
             value={confirmWord}
             onChange={(e) => setConfirmWord(e.target.value)}
-            placeholder="Type RESET"
+            placeholder="Type RESET to proceed"
+            className="font-mono text-center tracking-widest uppercase"
           />
 
-          <div className="pt-2 flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setIsResetModalOpen(false)}>
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setIsResetModalOpen(false);
+                setConfirmWord('');
+              }}
+              disabled={isResetting}
+            >
               Cancel
             </Button>
             <Button
               variant="danger"
-              disabled={confirmWord !== 'RESET'}
-              isLoading={isResetting}
+              size="sm"
+              icon={RotateCcw}
               onClick={handleExecuteReset}
+              isLoading={isResetting}
+              disabled={confirmWord !== 'RESET'}
             >
               Confirm Purge
             </Button>

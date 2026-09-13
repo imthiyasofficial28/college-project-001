@@ -29,6 +29,8 @@ interface AuthContextType {
   logout: () => Promise<void>;
   switchPerspective: (targetRole: UserRole) => Promise<void>;
   bootstrap: (payload: { institution: any; owner: any; template?: string }) => Promise<void>;
+  updateInstitutionProfile: (data: Partial<Institution>) => Promise<Institution>;
+  markDataSaved: () => Promise<void>;
   refreshState: () => Promise<void>;
   syncToLocalMemory: () => Promise<void>;
   markNotificationAsRead: (id: string) => Promise<void>;
@@ -240,6 +242,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await fetchAuxiliary();
   };
 
+  const updateInstitutionProfile = async (data: Partial<Institution>): Promise<Institution> => {
+    const updated = await api.updateInstitution(data);
+    setInstitution(updated);
+    recordLocalMemorySync();
+    return updated;
+  };
+
+  const markDataSaved = async () => {
+    await syncToLocalMemory();
+  };
+
   const resetInstitution = async () => {
     await api.resetInstitution();
     setStoredToken(null);
@@ -302,6 +315,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         switchPerspective,
         bootstrap,
+        updateInstitutionProfile,
+        markDataSaved,
         refreshState,
         syncToLocalMemory,
         markNotificationAsRead,
