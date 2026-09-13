@@ -11,6 +11,7 @@ import {
   deleteBackupFromDrive,
   isInsufficientScopesError,
   isUserCancelledAuthError,
+  isUnauthorizedDomainError,
   saveMasterDatabaseToDrive,
   getMasterDatabaseFromDrive,
   getMasterDatabaseInfo,
@@ -34,6 +35,8 @@ interface DriveContextType {
   lastSyncSuccessMessage: string | null;
   syncError: string | null;
   hasScopeError: boolean;
+  hasUnauthorizedDomainError: boolean;
+  currentHostname: string;
   connectDrive: () => Promise<void>;
   disconnectDrive: () => Promise<void>;
   syncAllToDrive: (customNote?: string) => Promise<DriveBackupFile>;
@@ -44,6 +47,10 @@ interface DriveContextType {
   restoreFromDrive: (backup: DriveBackupFile) => Promise<void>;
   deleteFromDrive: (fileId: string) => Promise<void>;
   reauthorizeDrive: () => Promise<void>;
+  exportLocalDatabaseFile: () => Promise<void>;
+  restoreFromLocalFile: (file: File) => Promise<{ success: boolean; message: string }>;
+  restoreFromTextPayload: (text: string) => Promise<{ success: boolean; message: string }>;
+  clearErrors: () => void;
 }
 
 const DriveContext = createContext<DriveContextType | undefined>(undefined);
@@ -63,7 +70,16 @@ export const DriveProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [masterDriveFile, setMasterDriveFile] = useState<DriveBackupFile | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [hasScopeError, setHasScopeError] = useState(false);
+  const [hasUnauthorizedDomainError, setHasUnauthorizedDomainError] = useState(false);
   const [lastSyncSuccessMessage, setLastSyncSuccessMessage] = useState<string | null>(null);
+
+  const currentHostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+
+  const clearErrors = () => {
+    setSyncError(null);
+    setHasScopeError(false);
+    setHasUnauthorizedDomainError(false);
+  };
 
   const [autoSyncEnabled, setAutoSyncEnabled] = useState<boolean>(() => {
     try {
@@ -153,6 +169,7 @@ export const DriveProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsConnecting(true);
     setSyncError(null);
     setHasScopeError(false);
+    setHasUnauthorizedDomainError(false);
     try {
       const { user } = await signInWithGoogleDrive();
       setDriveUser({
@@ -168,7 +185,12 @@ export const DriveProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return;
       }
       console.error('[DriveContext] Connection error:', err);
-      if (isInsufficientScopesError(err)) {
+      if (isUnauthorizedDomainError(err)) {
+        setHasUnauthorizedDomainError(true);
+        setSyncError(
+          `Firebase Error (auth/unauthorized-domain): This domain (${window.location.hostname}) is not yet authorized for OAuth operations in your Firebase project. Add it in Firebase Console > Authentication > Settings > Authorized Domains.`
+        );
+      } else if (isInsufficientScopesError(err)) {
         setHasScopeError(true);
         setDriveAccessToken(null);
         setSyncError(
@@ -199,6 +221,7 @@ export const DriveProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setMasterDriveFile(null);
       setSyncError(null);
       setHasScopeError(false);
+      setHasUnauthorizedDomainError(false);
     } catch (err: any) {
       console.error('[DriveContext] Disconnect error:', err);
     }
@@ -354,6 +377,77 @@ export const DriveProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  // FREE & ZERO-CONFIG LOCAL VAULT: Download Campus Database JSON
+  const exportLocalDatabaseFile = async (): Promise<void> => {
+    try {
+      const rawData = await api.exportData();
+      const jsonStr = JSON.stringify(rawData, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const downloadAnchor = document.createElement('a');
+      const dateStr = new Date().toISOString().split('T')[0];
+      const timeStr = new Date().toTimeString().split(' ')[0].replace(/:/g, '-');
+      const code = institution?.code ? institution.code.toLowerCase().replace(/[^a-z0-9_-]/g, '') : 'cuois';
+      const fileName = `${code}-campus-backup-${dateStr}_${timeStr}.json`;
+      downloadAnchor.href = url;
+      downloadAnchor.download = fileName;
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      URL.revokeObjectURL(url);
+      setLastSyncSuccessMessage(`Full Campus Database exported & downloaded (${fileName})!`);
+    } catch (err: any) {
+      console.error('[DriveContext] Export file error:', err);
+      setSyncError('Failed to export campus database file: ' + err.message);
+      throw err;
+    }
+  };
+
+  // FREE & ZERO-CONFIG LOCAL VAULT: Restore Campus Database from JSON File
+  const restoreFromLocalFile = async (file: File): Promise<{ success: boolean; message: string }> => {
+    setIsSyncing(true);
+    setSyncError(null);
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('Invalid campus database file format.');
+      }
+      const res = await api.restoreData(parsed);
+      await refreshState();
+      setLastSyncSuccessMessage(`Successfully restored all campus data from "${file.name}"!`);
+      return { success: true, message: res.message || 'Campus data restored successfully' };
+    } catch (err: any) {
+      console.error('[DriveContext] Restore local file error:', err);
+      setSyncError(err.message || 'Failed to restore campus database from file');
+      throw err;
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // FREE & ZERO-CONFIG LOCAL VAULT: Restore from pasted JSON text or token
+  const restoreFromTextPayload = async (text: string): Promise<{ success: boolean; message: string }> => {
+    setIsSyncing(true);
+    setSyncError(null);
+    try {
+      const parsed = JSON.parse(text.trim());
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('Invalid JSON payload for campus restoration.');
+      }
+      const res = await api.restoreData(parsed);
+      await refreshState();
+      setLastSyncSuccessMessage('Campus database successfully loaded and synchronized!');
+      return { success: true, message: res.message || 'Restored successfully' };
+    } catch (err: any) {
+      console.error('[DriveContext] Restore text payload error:', err);
+      setSyncError(err.message || 'Invalid campus JSON data payload');
+      throw err;
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   // Automatic Background Drive Sync:
   // Whenever the System Owner or user saves any record, debounced auto-sync mirrors to Google Drive
   useEffect(() => {
@@ -412,6 +506,8 @@ export const DriveProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         lastSyncSuccessMessage,
         syncError,
         hasScopeError,
+        hasUnauthorizedDomainError,
+        currentHostname,
         connectDrive,
         disconnectDrive,
         syncAllToDrive,
@@ -422,6 +518,10 @@ export const DriveProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         restoreFromDrive,
         deleteFromDrive,
         reauthorizeDrive,
+        exportLocalDatabaseFile,
+        restoreFromLocalFile,
+        restoreFromTextPayload,
+        clearErrors,
       }}
     >
       {children}

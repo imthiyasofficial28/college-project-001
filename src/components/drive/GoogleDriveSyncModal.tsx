@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Cloud,
   CloudUpload,
@@ -22,6 +22,14 @@ import {
   Sparkles,
   Zap,
   CheckCheck,
+  Download,
+  Upload,
+  FileJson,
+  Globe,
+  FileUp,
+  FileDown,
+  Terminal,
+  Code,
 } from 'lucide-react';
 import { useDrive } from '../../lib/drive-context.tsx';
 import { useAuth } from '../../lib/auth-context.tsx';
@@ -52,6 +60,8 @@ export const GoogleDriveSyncModal: React.FC<GoogleDriveSyncModalProps> = ({ isOp
     lastSyncSuccessMessage,
     syncError,
     hasScopeError,
+    hasUnauthorizedDomainError,
+    currentHostname,
     connectDrive,
     disconnectDrive,
     syncAllToDrive,
@@ -62,11 +72,25 @@ export const GoogleDriveSyncModal: React.FC<GoogleDriveSyncModalProps> = ({ isOp
     restoreFromDrive,
     deleteFromDrive,
     reauthorizeDrive,
+    exportLocalDatabaseFile,
+    restoreFromLocalFile,
+    restoreFromTextPayload,
+    clearErrors,
   } = useDrive();
 
   const [customNote, setCustomNote] = useState('');
   const [copiedFileId, setCopiedFileId] = useState<string | null>(null);
+  const [copiedDomain, setCopiedDomain] = useState(false);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
+
+  // Local File Vault states (Free solution for Vercel & Offline)
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isExportingFile, setIsExportingFile] = useState(false);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [showPasteModal, setShowPasteModal] = useState(false);
+  const [pastedJson, setPastedJson] = useState('');
+  const [pasteError, setPasteError] = useState<string | null>(null);
+  const [isRestoringText, setIsRestoringText] = useState(false);
 
   // Destructive Confirmation States (MANDATORY per Workspace skill)
   const [confirmRestoreBackup, setConfirmRestoreBackup] = useState<DriveBackupFile | null>(null);
@@ -126,6 +150,55 @@ export const GoogleDriveSyncModal: React.FC<GoogleDriveSyncModalProps> = ({ isOp
       navigator.clipboard.writeText(file.webViewLink);
       setCopiedFileId(file.id);
       setTimeout(() => setCopiedFileId(null), 2500);
+    }
+  };
+
+  const handleExportFile = async () => {
+    setIsExportingFile(true);
+    try {
+      await exportLocalDatabaseFile();
+      setSuccessBanner('Campus database file downloaded successfully!');
+      setTimeout(() => setSuccessBanner(null), 5000);
+    } catch {
+      // error handled in context
+    } finally {
+      setIsExportingFile(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingFile(true);
+    try {
+      await restoreFromLocalFile(file);
+      setSuccessBanner(`Campus database restored successfully from "${file.name}"!`);
+      setTimeout(() => setSuccessBanner(null), 5000);
+    } catch {
+      // error handled in context
+    } finally {
+      setIsUploadingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRestoreFromPastedText = async () => {
+    if (!pastedJson.trim()) {
+      setPasteError('Please paste valid campus JSON database text.');
+      return;
+    }
+    setIsRestoringText(true);
+    setPasteError(null);
+    try {
+      await restoreFromTextPayload(pastedJson);
+      setShowPasteModal(false);
+      setPastedJson('');
+      setSuccessBanner('Campus database restored from snapshot text successfully!');
+      setTimeout(() => setSuccessBanner(null), 5000);
+    } catch (err: any) {
+      setPasteError(err.message || 'Failed to restore from text');
+    } finally {
+      setIsRestoringText(false);
     }
   };
 
@@ -225,7 +298,99 @@ export const GoogleDriveSyncModal: React.FC<GoogleDriveSyncModalProps> = ({ isOp
             </div>
           )}
 
-          {syncError && !hasScopeError && (
+          {/* Special Vercel Domain Authorization Guide Card */}
+          {(hasUnauthorizedDomainError || (syncError && syncError.toLowerCase().includes('unauthorized-domain'))) && (
+            <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs space-y-3 animate-fadeIn">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2 font-semibold text-amber-300">
+                  <Globe className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Firebase Authorized Domain Required (Vercel Deployment)</span>
+                </div>
+                <Badge variant="warning" size="sm" className="font-mono text-[10px]">
+                  VERCEL DOMAIN
+                </Badge>
+              </div>
+              <p className="text-slate-300 leading-relaxed">
+                Firebase Authentication blocks OAuth popups on any domain not explicitly listed under{' '}
+                <strong className="text-amber-300">Authorized Domains</strong> in your Firebase project. Because this app is running on{' '}
+                <code className="px-1.5 py-0.5 rounded bg-slate-900 text-amber-300 border border-amber-500/30 font-mono text-[11px]">
+                  {currentHostname}
+                </code>
+                , Firebase returns <code className="text-amber-400 font-mono">auth/unauthorized-domain</code>.
+              </p>
+
+              <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-slate-400 font-medium">Your Current Vercel Domain:</span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(currentHostname);
+                      setCopiedDomain(true);
+                      setTimeout(() => setCopiedDomain(false), 2500);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono transition-colors text-[11px] cursor-pointer"
+                  >
+                    {copiedDomain ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-slate-400" />}
+                    <span>{copiedDomain ? 'Copied!' : 'Copy Domain'}</span>
+                  </button>
+                </div>
+                <div className="font-mono text-emerald-400 text-xs bg-slate-900/90 p-2 rounded border border-slate-800 break-all select-all">
+                  {currentHostname}
+                </div>
+              </div>
+
+              <div className="text-[11px] text-slate-300 space-y-1.5 pl-1">
+                <p className="font-semibold text-slate-200">How to whitelist in 30 seconds (100% Free):</p>
+                <ol className="list-decimal list-inside space-y-1 text-slate-400 pl-1">
+                  <li>
+                    Open{' '}
+                    <a
+                      href="https://console.firebase.google.com/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-cyan-400 underline hover:text-cyan-300 font-medium"
+                    >
+                      Firebase Console
+                    </a>{' '}
+                    and select your project.
+                  </li>
+                  <li>
+                    Navigate to <strong className="text-slate-200">Authentication</strong> &rarr; Click the{' '}
+                    <strong className="text-slate-200">Settings</strong> tab.
+                  </li>
+                  <li>
+                    Under <strong className="text-slate-200">Authorized domains</strong>, click{' '}
+                    <strong className="text-slate-200">Add domain</strong>, paste{' '}
+                    <code className="text-amber-300 font-mono">{currentHostname}</code> (or <code className="text-amber-300 font-mono">vercel.app</code>), and click Save.
+                  </li>
+                </ol>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <a
+                  href="https://console.firebase.google.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-medium text-xs transition-colors cursor-pointer shadow-sm"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Open Firebase Console</span>
+                </a>
+                <button
+                  onClick={() => {
+                    clearErrors();
+                    handleConnect();
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs transition-colors cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Retry Authorization</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {syncError && !hasScopeError && !hasUnauthorizedDomainError && !syncError.toLowerCase().includes('unauthorized-domain') && (
             <div className="p-3.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 animate-fadeIn">
               <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
               <span className="flex-1">{syncError}</span>
@@ -351,6 +516,79 @@ export const GoogleDriveSyncModal: React.FC<GoogleDriveSyncModalProps> = ({ isOp
                   Last Drive snapshot: {lastDriveSyncAt ? lastDriveSyncAt.toLocaleString() : 'Not synced yet'}
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* FREE & ZERO-CONFIG SOLUTION: Offline & Multi-Device Local File Vault */}
+          <div className="p-4 sm:p-5 rounded-xl bg-gradient-to-br from-[#07131F] via-[#091B2C] to-[#07131F] border border-emerald-500/40 space-y-4 shadow-xl">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
+                  <HardDrive className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-300">
+                      Free Solution: Local File Vault & Instant Cross-Device Transfer
+                    </span>
+                    <Badge variant="success" size="sm" className="font-mono text-[9px] bg-emerald-500/20 text-emerald-300 border-emerald-500/40">
+                      NO FIREBASE / ZERO CONFIG
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    100% Free & Works Anywhere (Vercel, Localhost, Mobile, Offline). Download or restore your entire campus database with 1 click.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+              {/* 1. Download Database JSON */}
+              <button
+                type="button"
+                onClick={handleExportFile}
+                disabled={isExportingFile}
+                className="flex flex-col items-center justify-center p-3 rounded-xl bg-[#0B182B] hover:bg-[#0F223D] border border-emerald-500/30 hover:border-emerald-500/60 text-slate-200 transition-all text-center gap-1.5 cursor-pointer group disabled:opacity-50"
+              >
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/15 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
+                  {isExportingFile ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                </div>
+                <span className="text-xs font-semibold text-slate-100">Download Campus Backup</span>
+                <span className="text-[10px] text-slate-400 font-mono">Export full database (.json)</span>
+              </button>
+
+              {/* 2. Upload / Restore Database JSON */}
+              <label className="flex flex-col items-center justify-center p-3 rounded-xl bg-[#0B182B] hover:bg-[#0F223D] border border-cyan-500/30 hover:border-cyan-500/60 text-slate-200 transition-all text-center gap-1.5 cursor-pointer group">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json,application/json"
+                  className="hidden"
+                  onChange={handleFileUpload}
+                  disabled={isUploadingFile}
+                />
+                <div className="w-8 h-8 rounded-lg bg-cyan-500/15 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform">
+                  {isUploadingFile ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                </div>
+                <span className="text-xs font-semibold text-slate-100">Restore from File</span>
+                <span className="text-[10px] text-slate-400 font-mono">Upload backup (.json)</span>
+              </label>
+
+              {/* 3. Paste / Copy JSON Code */}
+              <button
+                type="button"
+                onClick={() => {
+                  setPasteError(null);
+                  setShowPasteModal(true);
+                }}
+                className="flex flex-col items-center justify-center p-3 rounded-xl bg-[#0B182B] hover:bg-[#0F223D] border border-indigo-500/30 hover:border-indigo-500/60 text-slate-200 transition-all text-center gap-1.5 cursor-pointer group"
+              >
+                <div className="w-8 h-8 rounded-lg bg-indigo-500/15 flex items-center justify-center text-indigo-400 group-hover:scale-110 transition-transform">
+                  <Code className="w-4 h-4" />
+                </div>
+                <span className="text-xs font-semibold text-slate-100">Transfer via Code / Text</span>
+                <span className="text-[10px] text-slate-400 font-mono">Copy or paste snapshot</span>
+              </button>
             </div>
           </div>
 
@@ -739,6 +977,103 @@ export const GoogleDriveSyncModal: React.FC<GoogleDriveSyncModalProps> = ({ isOp
               >
                 Delete File
               </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* PASTE / COPY DATABASE SNAPSHOT CODE MODAL (Zero-Config Transfer) */}
+      {showPasteModal && (
+        <Modal
+          isOpen={true}
+          onClose={() => {
+            if (!isRestoringText) {
+              setShowPasteModal(false);
+              setPasteError(null);
+            }
+          }}
+          title="Instant Database Transfer (Code / JSON)"
+          subtitle="Directly copy or load campus database records across devices without cloud credentials"
+          size="lg"
+        >
+          <div className="space-y-4 text-xs">
+            <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-slate-200 flex items-center gap-1.5">
+                  <Copy className="w-4 h-4 text-cyan-400" />
+                  Option A: Copy Active Database to Clipboard
+                </span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const data = await (await import('../../lib/api.ts')).api.exportData();
+                      await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+                      setSuccessBanner('Complete campus database JSON copied to clipboard!');
+                      setTimeout(() => setSuccessBanner(null), 4000);
+                    } catch (err: any) {
+                      setPasteError('Failed to copy database: ' + err.message);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-900 font-bold text-xs transition-colors cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5 text-slate-900" />
+                  <span>Copy Snapshot JSON</span>
+                </button>
+              </div>
+              <p className="text-slate-400 text-[11px]">
+                Copy this complete JSON snapshot and send it to your phone, secondary computer, or colleague via message or email.
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-slate-200 flex items-center gap-1.5">
+                  <Terminal className="w-4 h-4 text-emerald-400" />
+                  Option B: Paste JSON Snapshot & Load
+                </span>
+              </div>
+              <p className="text-slate-400 text-[11px]">
+                Paste a database JSON string exported from another device to immediately load and synchronize all campus records:
+              </p>
+
+              {pasteError && (
+                <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-[11px] flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{pasteError}</span>
+                </div>
+              )}
+
+              <textarea
+                value={pastedJson}
+                onChange={(e) => setPastedJson(e.target.value)}
+                placeholder='Paste campus database JSON here (e.g. { "institution": ..., "users": ... })'
+                className="w-full h-36 bg-[#060A13] border border-slate-700 rounded-xl p-3 font-mono text-[11px] text-slate-200 placeholder:text-slate-600 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 custom-scrollbar"
+              />
+
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setShowPasteModal(false);
+                    setPasteError(null);
+                  }}
+                  disabled={isRestoringText}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={RotateCcw}
+                  onClick={handleRestoreFromPastedText}
+                  isLoading={isRestoringText}
+                  disabled={!pastedJson.trim()}
+                >
+                  Load Database from Text
+                </Button>
+              </div>
             </div>
           </div>
         </Modal>

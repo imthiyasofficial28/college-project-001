@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Shield,
   Lock,
@@ -13,6 +13,11 @@ import {
   CloudDownload,
   RefreshCw,
   ExternalLink,
+  Upload,
+  Globe,
+  Copy,
+  Check,
+  HardDrive,
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context.tsx';
 import { useDrive } from '../../lib/drive-context.tsx';
@@ -31,6 +36,10 @@ export const LoginView: React.FC = () => {
     masterDriveFile,
     lastSyncSuccessMessage,
     syncError,
+    hasUnauthorizedDomainError,
+    currentHostname,
+    restoreFromLocalFile,
+    clearErrors,
   } = useDrive();
 
   // Compulsory Member ID and Password state
@@ -41,6 +50,27 @@ export const LoginView: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cloudSuccess, setCloudSuccess] = useState<string | null>(null);
+  const [copiedDomain, setCopiedDomain] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isRestoringFile, setIsRestoringFile] = useState(false);
+
+  const handleRestoreFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsRestoringFile(true);
+    setError(null);
+    setCloudSuccess(null);
+    try {
+      await restoreFromLocalFile(file);
+      setCloudSuccess(`Campus database loaded from "${file.name}"! You can now log in with your credentials.`);
+    } catch (err: any) {
+      setError('Failed to load backup: ' + (err.message || 'Invalid format'));
+    } finally {
+      setIsRestoringFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,28 +163,92 @@ export const LoginView: React.FC = () => {
             </div>
           )}
 
-          {syncError && (
-            <div className="p-2.5 rounded-lg bg-rose-950/60 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-              <span>{syncError}</span>
+          {/* Special Vercel Domain Alert */}
+          {(hasUnauthorizedDomainError || (syncError && syncError.toLowerCase().includes('unauthorized-domain'))) ? (
+            <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-amber-300 flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-amber-400" />
+                  Firebase Domain Authorization Required
+                </span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
+                  VERCEL
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                Firebase blocked Google sign-in because <strong className="text-amber-300">{currentHostname}</strong> is not in your Firebase Authorized Domains list.
+              </p>
+              <div className="flex items-center justify-between bg-slate-950/80 p-1.5 px-2.5 rounded border border-slate-800 text-[11px]">
+                <code className="text-amber-300 font-mono">{currentHostname}</code>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(currentHostname);
+                    setCopiedDomain(true);
+                    setTimeout(() => setCopiedDomain(false), 2500);
+                  }}
+                  className="text-slate-400 hover:text-white flex items-center gap-1 font-mono text-[10px] cursor-pointer"
+                >
+                  {copiedDomain ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedDomain ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] pt-0.5">
+                <a
+                  href="https://console.firebase.google.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-cyan-400 hover:underline font-medium"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  <span>Add domain in Firebase Console &rarr; Auth &rarr; Settings</span>
+                </a>
+              </div>
             </div>
+          ) : (
+            syncError && (
+              <div className="p-2.5 rounded-lg bg-rose-950/60 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{syncError}</span>
+              </div>
+            )
           )}
 
-          <div className="pt-1 flex items-center justify-between gap-2">
+          <div className="pt-1 space-y-2">
             {!isConnected ? (
-              <button
-                type="button"
-                onClick={handleDriveConnectAndPull}
-                disabled={isConnecting || isSyncing}
-                className="w-full flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-900 font-bold text-xs transition-colors shadow-md disabled:opacity-50"
-              >
-                {isConnecting ? (
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <CloudDownload className="w-3.5 h-3.5 text-slate-900" />
-                )}
-                <span>Connect Google Drive & Sync Campus Data</span>
-              </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={handleDriveConnectAndPull}
+                  disabled={isConnecting || isSyncing}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-900 font-bold text-xs transition-colors shadow-md disabled:opacity-50 cursor-pointer"
+                >
+                  {isConnecting ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <CloudDownload className="w-3.5 h-3.5 text-slate-900" />
+                  )}
+                  <span>Connect Google Drive</span>
+                </button>
+
+                {/* Free Zero-Config Local Backup Upload */}
+                <label className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 hover:border-emerald-500/50 font-bold text-xs transition-colors shadow-md cursor-pointer">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".json,application/json"
+                    className="hidden"
+                    onChange={handleRestoreFile}
+                    disabled={isRestoringFile}
+                  />
+                  {isRestoringFile ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Upload className="w-3.5 h-3.5 text-emerald-400" />
+                  )}
+                  <span>Load Backup File (.json)</span>
+                </label>
+              </div>
             ) : (
               <div className="w-full flex items-center justify-between gap-2 bg-[#091122] p-2 rounded-lg border border-slate-700/60">
                 <div className="text-[11px] text-slate-300 truncate">

@@ -181,4 +181,98 @@ export const standaloneStorage = {
     }
     setStorage('credentials', creds);
   },
+
+  exportDatabase(): any {
+    return {
+      version: '1.0.0',
+      exportedAt: new Date().toISOString(),
+      institution: getStorage('institution', null),
+      users: getStorage('users', []),
+      credentials: getStorage('credentials', {}),
+      digitalTwinNodes: getStorage('digitalTwinNodes', []),
+      departments: getStorage('departments', []),
+      programs: getStorage('programs', []),
+      academicYears: getStorage('academicYears', []),
+      semesters: getStorage('semesters', []),
+      sections: getStorage('sections', []),
+      subjects: getStorage('subjects', []),
+      students: getStorage('students', []),
+      faculty: getStorage('faculty', []),
+      staff: getStorage('staff', []),
+      attendance: getStorage('attendance', []),
+      timetable: getStorage('timetable', []),
+      assignments: getStorage('assignments', []),
+      examinations: getStorage('examinations', []),
+      examSchedules: getStorage('examSchedules', []),
+      results: getStorage('results', []),
+      announcements: getStorage('announcements', []),
+      notifications: getStorage('notifications', []),
+      complaints: getStorage('complaints', []),
+      facilities: getStorage('facilities', []),
+      maintenanceRequests: getStorage('maintenanceRequests', []),
+      libraryItems: getStorage('libraryItems', []),
+      libraryTransactions: getStorage('libraryTransactions', []),
+      hostels: getStorage('hostels', []),
+      transportRoutes: getStorage('transportRoutes', []),
+      vehicles: getStorage('vehicles', []),
+      visitors: getStorage('visitors', []),
+      securityZones: getStorage('securityZones', []),
+      securityIncidents: getStorage('securityIncidents', []),
+      auditLogs: getStorage('auditLogs', []),
+      aiInsights: getStorage('aiInsights', []),
+      surveys: getStorage('surveys', []),
+      confidentialReports: getStorage('confidentialReports', []),
+      isConfigured: getStorage('isConfigured', true),
+    };
+  },
+
+  importDatabase(data: any): boolean {
+    if (!data || typeof data !== 'object') return false;
+    const keys = [
+      'institution',
+      'users',
+      'credentials',
+      'digitalTwinNodes',
+      'departments',
+      'programs',
+      'academicYears',
+      'semesters',
+      'sections',
+      'subjects',
+      'students',
+      'faculty',
+      'staff',
+      'attendance',
+      'timetable',
+      'assignments',
+      'examinations',
+      'examSchedules',
+      'results',
+      'announcements',
+      'notifications',
+      'complaints',
+      'facilities',
+      'maintenanceRequests',
+      'libraryItems',
+      'libraryTransactions',
+      'hostels',
+      'transportRoutes',
+      'vehicles',
+      'visitors',
+      'securityZones',
+      'securityIncidents',
+      'auditLogs',
+      'aiInsights',
+      'surveys',
+      'confidentialReports',
+      'isConfigured',
+    ];
+    for (const key of keys) {
+      if (data[key] !== undefined) {
+        setStorage(key, data[key]);
+      }
+    }
+    setStorage('initialized', true);
+    return true;
+  },
 };

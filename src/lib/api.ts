@@ -560,9 +560,16 @@ function handleStandaloneFallback<T>(endpoint: string, options: RequestInit = {}
   }
 
   if (endpoint === '/api/data/export') {
-    const inst = standaloneStorage.get('institution', null);
-    const users = standaloneStorage.get('users', []);
-    return { institution: inst, users } as unknown as T;
+    return standaloneStorage.exportDatabase() as unknown as T;
+  }
+
+  if (endpoint === '/api/data/restore' || endpoint === '/api/data/sync-from-drive') {
+    const success = standaloneStorage.importDatabase(body);
+    recordLocalMemorySync();
+    return {
+      success,
+      message: 'Campus database successfully restored and loaded.',
+    } as unknown as T;
   }
 
   if (endpoint === '/api/data/import') {

@@ -65,6 +65,18 @@ export function isUserCancelledAuthError(err: any): boolean {
   );
 }
 
+export function isUnauthorizedDomainError(err: any): boolean {
+  if (!err) return false;
+  const code = err.code || '';
+  const msg = (err.message || String(err)).toLowerCase();
+  return (
+    code === 'auth/unauthorized-domain' ||
+    msg.includes('auth/unauthorized-domain') ||
+    msg.includes('unauthorized-domain') ||
+    msg.includes('unauthorized domain')
+  );
+}
+
 export interface DriveBackupFile {
   id: string;
   name: string;
