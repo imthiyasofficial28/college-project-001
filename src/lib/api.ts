@@ -881,6 +881,18 @@ export const api = {
   // Student Risk Early-Warning Intelligence
   getStudentRiskIndicators: () => request<StudentRiskIndicator[]>('/api/academic-risk/students'),
 
+  // Campus Data Restore for Cloud Backup & Sync
+  restoreData: (data: any) =>
+    request<{ success: boolean; message: string }>('/api/data/restore', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  syncFromDrive: (data: any) =>
+    request<{ success: boolean; message: string }>('/api/data/sync-from-drive', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
   // SSE Stream
   subscribeRealtimeEvents: (onEvent: (event: { type: string; timestamp: string; data: any }) => void) => {
     if (typeof window === 'undefined' || isStandaloneMode) {

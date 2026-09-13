@@ -8,13 +8,19 @@ import {
   FileJson,
   Database,
   ArrowRight,
+  Cloud,
+  CloudUpload,
 } from 'lucide-react';
 import { api } from '../../lib/api.ts';
+import { useDrive } from '../../lib/drive-context.tsx';
+import { GoogleDriveSyncModal } from '../drive/GoogleDriveSyncModal.tsx';
 import { Button } from '../ui/button.tsx';
 import { Select } from '../ui/input.tsx';
 import { Badge } from '../ui/badge.tsx';
 
 export const DataImportView: React.FC = () => {
+  const { isConnected: isDriveConnected, isSyncing: isDriveSyncing } = useDrive();
+  const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
   const [entityType, setEntityType] = useState('STUDENTS');
   const [importText, setImportText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -114,14 +120,26 @@ Dr. Sophia Morales,sophia.m@apexhorizon.edu,FAC-2025-0005,dept_mech,Mechanical E
             Bulk CSV/JSON data onboarding with automatic duplicate resolution and complete sovereign JSON backup.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          icon={Download}
-          onClick={handleExportFullDatabase}
-        >
-          Export Full Campus Backup (JSON)
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="primary"
+            size="sm"
+            icon={Cloud}
+            onClick={() => setIsDriveModalOpen(true)}
+            className="text-xs font-mono"
+          >
+            {isDriveSyncing ? 'Syncing...' : isDriveConnected ? 'Drive Vault' : 'Sync to Drive'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            icon={Download}
+            onClick={handleExportFullDatabase}
+            className="text-xs font-mono"
+          >
+            Export JSON
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -233,6 +251,12 @@ Dr. Sophia Morales,sophia.m@apexhorizon.edu,FAC-2025-0005,dept_mech,Mechanical E
           </div>
         </div>
       </div>
+
+      {/* Google Drive Synchronization Vault Modal */}
+      <GoogleDriveSyncModal
+        isOpen={isDriveModalOpen}
+        onClose={() => setIsDriveModalOpen(false)}
+      />
     </div>
   );
 };

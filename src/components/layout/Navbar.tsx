@@ -16,11 +16,14 @@ import {
   CheckCircle2,
   Database,
   CloudCheck,
+  Cloud,
   User,
   Edit3,
   X,
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context.tsx';
+import { useDrive } from '../../lib/drive-context.tsx';
+import { GoogleDriveSyncModal } from '../drive/GoogleDriveSyncModal.tsx';
 import { UserRole } from '../../types/index.ts';
 import { Badge } from '../ui/badge.tsx';
 
@@ -76,6 +79,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCommandPalette, onNavigate
     refreshState,
     updateUserName,
   } = useAuth();
+
+  const { isConnected: isDriveConnected, isSyncing: isDriveSyncing, driveBackups, hasScopeError } = useDrive();
+  const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
 
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showNotifMenu, setShowNotifMenu] = useState(false);
@@ -255,6 +261,53 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCommandPalette, onNavigate
             </div>
           )}
         </div>
+
+        {/* Google Drive Cloud Vault Trigger */}
+        <button
+          onClick={() => setIsDriveModalOpen(true)}
+          title={
+            hasScopeError
+              ? 'Google Drive permission required — Click to authorize'
+              : isDriveConnected
+              ? `Google Drive Connected — ${driveBackups.length} snapshot(s) in vault`
+              : 'Connect Google Drive for cloud backup, multi-device sync & sharing'
+          }
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-mono transition-all duration-150 ${
+            hasScopeError
+              ? 'bg-amber-950/40 hover:bg-amber-950/60 border-amber-500/50 text-amber-300'
+              : isDriveSyncing
+              ? 'bg-cyan-950/40 border-cyan-500/40 text-cyan-300'
+              : isDriveConnected
+              ? 'bg-emerald-950/30 hover:bg-emerald-950/50 border-emerald-500/30 text-emerald-300'
+              : 'bg-[#0E1524] hover:bg-[#131C30] border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Cloud
+            className={`w-3 h-3 ${
+              hasScopeError
+                ? 'text-amber-400'
+                : isDriveSyncing
+                ? 'animate-pulse text-cyan-400'
+                : isDriveConnected
+                ? 'text-emerald-400'
+                : 'text-slate-400'
+            }`}
+          />
+          <span className="hidden md:inline">
+            {hasScopeError
+              ? 'Drive Permission Needed'
+              : isDriveSyncing
+              ? 'Syncing Drive...'
+              : isDriveConnected
+              ? 'Drive Synced'
+              : 'Google Drive'}
+          </span>
+          {isDriveConnected && driveBackups.length > 0 && (
+            <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] flex items-center justify-center font-bold">
+              {driveBackups.length}
+            </span>
+          )}
+        </button>
 
         {/* Gemini Live & Chat Quick Trigger */}
         <button
@@ -593,6 +646,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCommandPalette, onNavigate
           </div>
         </div>
       )}
+
+      {/* Google Drive Synchronization & Cloud Vault Modal */}
+      <GoogleDriveSyncModal
+        isOpen={isDriveModalOpen}
+        onClose={() => setIsDriveModalOpen(false)}
+      />
     </header>
   );
 };

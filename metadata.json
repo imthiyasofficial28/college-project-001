@@ -1,6 +1,6 @@
 {
   "name": "CUOIS — Campus Unified Operations & Intelligence System",
-  "description": "Production-grade, scalable, secure, intelligent, real-time digital operating system for universities and large educational campuses.",
+  "description": "Production-grade, scalable, secure digital operating system for educational campuses with local storage and Google Drive cloud backup, sharing, and synchronization.",
   "requestFramePermissions": [
     "microphone",
     "geolocation"

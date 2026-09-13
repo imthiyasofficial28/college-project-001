@@ -20,6 +20,7 @@ import {
   X,
   ArrowRight,
   User,
+  Cloud,
 } from 'lucide-react';
 import { NavView } from './Sidebar.tsx';
 
@@ -62,6 +63,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     { label: 'User Directory & RBAC Security', view: 'users-rbac' as NavView, icon: Users, category: 'Administration' },
     { label: 'Audit Trail & Compliance Log', view: 'audit-logs' as NavView, icon: History, category: 'Administration' },
     { label: 'Batch Import & Data Export Engine', view: 'data-import' as NavView, icon: FileSpreadsheet, category: 'Administration' },
+    { label: 'Google Drive Cloud Vault & Institutional Snapshots (Save & Sync)', view: 'settings' as NavView, icon: Cloud, category: 'Administration' },
     { label: 'System Settings & Institution Sovereignty', view: 'settings' as NavView, icon: Settings, category: 'Administration' },
   ];
 

@@ -282,14 +282,38 @@ class DatabaseService {
         }
         console.log('[CUOIS DB] Loaded database state from disk.');
       } else {
-        // First-time empty institution initialization with pre-configured System Owner account ready
+        // First-time empty institution initialization
         this.data = this.getEmptySchema();
-        this.persistImmediate();
         console.log('[CUOIS DB] Initialized clean empty database.');
       }
+
+      // Auto-configure institution if unconfigured so every visitor always lands on the Login Page
+      if (!this.data.institution || !this.data.institution.isConfigured) {
+        this.bootstrapInstitution({
+          institution: {
+            name: 'Campus University',
+            code: 'CUOIS',
+            tagline: 'Unified Operations & Intelligence System • Architected by Imthiyas',
+            establishedYear: 2025,
+            address: 'Campus Command Center',
+            timezone: 'UTC-5 (Eastern Standard Time)',
+            academicCalendarType: 'SEMESTER',
+            contactEmail: 'imthiyasofficial28@gmail.com',
+            contactPhone: '+1 (555) 019-4820',
+          },
+          owner: {
+            fullName: 'Imthiyas',
+            email: 'imthiyasofficial28@gmail.com',
+            password: 'Imthiyas@12345',
+          },
+          template: 'UNIVERSITY_ENTERPRISE',
+        });
+      }
+
       // Guarantee Sovereign System Owner account (IMTHIYAS / Imthiyas@12345) exists and is active
       this.ensureSystemOwnerAccount();
       this.isLoaded = true;
+      this.persistImmediate();
     } catch (err) {
       console.error('[CUOIS DB] Initialization error:', err);
       this.data = this.getEmptySchema();
@@ -2218,10 +2242,30 @@ class DatabaseService {
     return false;
   }
 
-  // --- INSTITUTION HARD RESET ---
+  // --- INSTITUTION HARD RESET & RESTORE ---
   public resetToEmpty(): void {
     this.data = this.getEmptySchema();
     this.persistImmediate();
+  }
+
+  public restoreData(backupData: Partial<DatabaseSchema>): boolean {
+    if (!backupData || typeof backupData !== 'object') {
+      throw new Error('Invalid backup dataset payload');
+    }
+    const empty = this.getEmptySchema();
+    this.data = {
+      ...empty,
+      ...backupData,
+    };
+    if (!this.data.roles || this.data.roles.length === 0) {
+      this.data.roles = this.getDefaultRoles();
+    }
+    if (!this.data.digitalTwinNodes || this.data.digitalTwinNodes.length === 0) {
+      this.data.digitalTwinNodes = this.getDefaultDigitalTwinNodes();
+    }
+    this.ensureSystemOwnerAccount();
+    this.persistImmediate();
+    return true;
   }
 }
 

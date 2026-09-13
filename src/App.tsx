@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './lib/auth-context.tsx';
+import { DriveProvider } from './lib/drive-context.tsx';
 import { Navbar } from './components/layout/Navbar.tsx';
 import { Sidebar, NavView } from './components/layout/Sidebar.tsx';
 import { CommandPalette } from './components/layout/CommandPalette.tsx';
@@ -227,7 +228,9 @@ const AppContent: React.FC = () => {
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <DriveProvider>
+        <AppContent />
+      </DriveProvider>
     </AuthProvider>
   );
 }

@@ -18,15 +18,35 @@ import {
   Calendar,
   School,
   Sparkles,
+  Cloud,
+  CloudUpload,
+  HardDrive,
+  Share2,
+  RefreshCw,
+  ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context.tsx';
+import { useDrive } from '../../lib/drive-context.tsx';
+import { GoogleDriveSyncModal } from '../drive/GoogleDriveSyncModal.tsx';
 import { Button } from '../ui/button.tsx';
 import { Input, Select, Textarea } from '../ui/input.tsx';
 import { Badge } from '../ui/badge.tsx';
 import { Modal } from '../ui/modal.tsx';
 
 export const SettingsView: React.FC = () => {
-  const { institution, liveTelemetry, resetInstitution, updateInstitutionProfile, activeRole, hasPermission } = useAuth();
+  const { institution, liveTelemetry, resetInstitution, updateInstitutionProfile, activeRole, hasPermission, lastSavedAt, syncToLocalMemory, syncStatus } = useAuth();
+  const {
+    driveUser,
+    isConnected: isDriveConnected,
+    isSyncing: isDriveSyncing,
+    driveBackups,
+    lastDriveSyncAt,
+    syncAllToDrive,
+    hasScopeError,
+  } = useDrive();
+
+  const [isDriveVaultOpen, setIsDriveVaultOpen] = useState(false);
+  const [driveQuickSyncSuccess, setDriveQuickSyncSuccess] = useState<string | null>(null);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [confirmWord, setConfirmWord] = useState('');
   const [isResetting, setIsResetting] = useState(false);
@@ -574,6 +594,168 @@ export const SettingsView: React.FC = () => {
         )}
       </div>
 
+      {/* Data Storage & Google Drive Cloud Synchronization */}
+      <div className="p-5 sm:p-6 rounded-xl bg-[#0B1220] border border-slate-800 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+              <Cloud className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-slate-100">
+                Data Persistence & Google Drive Cloud Vault
+              </h3>
+              <p className="text-xs text-slate-400">
+                Continuous local memory caching paired with on-demand and scheduled Google Drive cloud backups.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {isDriveConnected ? (
+              <Badge variant="success" size="sm" className="font-mono text-[10px]">
+                DRIVE CONNECTED
+              </Badge>
+            ) : hasScopeError ? (
+              <Badge variant="warning" size="sm" className="font-mono text-[10px] text-amber-400 border-amber-500/40">
+                PERMISSION REQUIRED
+              </Badge>
+            ) : (
+              <Badge variant="outline" size="sm" className="font-mono text-[10px] text-slate-400">
+                DRIVE OFFLINE
+              </Badge>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              icon={Cloud}
+              onClick={() => setIsDriveVaultOpen(true)}
+              className="text-xs"
+            >
+              Open Cloud Vault
+            </Button>
+          </div>
+        </div>
+
+        {driveQuickSyncSuccess && (
+          <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2 animate-fadeIn">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+            <span>{driveQuickSyncSuccess}</span>
+          </div>
+        )}
+
+        {/* Dual Storage Comparison Matrix */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Local Memory Storage */}
+          <div className="p-4 rounded-xl bg-[#080D18] border border-slate-800 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-mono font-semibold text-cyan-400 uppercase tracking-wider">
+                <HardDrive className="w-4 h-4" />
+                Local Memory Storage
+              </div>
+              <Badge variant="cyan" size="sm" className="font-mono text-[10px]">
+                REAL-TIME
+              </Badge>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Every roster update, attendance swipe, exam result, and facility ticket is instantly written to local memory and persistent container storage for sub-second system execution.
+            </p>
+            <div className="pt-1 flex items-center justify-between text-[11px] font-mono border-t border-slate-800/80">
+              <span className="text-slate-400">
+                Last synced: {lastSavedAt ? lastSavedAt.toLocaleTimeString() : 'Current Session'}
+              </span>
+              <button
+                onClick={syncToLocalMemory}
+                disabled={syncStatus === 'saving'}
+                className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-medium cursor-pointer"
+              >
+                <RefreshCw className={`w-3 h-3 ${syncStatus === 'saving' ? 'animate-spin' : ''}`} />
+                <span>Save Memory</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Google Drive Storage */}
+          <div className="p-4 rounded-xl bg-[#080D18] border border-slate-800 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-mono font-semibold text-emerald-400 uppercase tracking-wider">
+                <Cloud className="w-4 h-4" />
+                Google Drive Cloud Vault
+              </div>
+              <Badge variant="success" size="sm" className="font-mono text-[10px]">
+                SOVEREIGN VAULT
+              </Badge>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Packs all 35+ campus sub-modules into portable, immutable JSON snapshots stored in your Google Drive (<code className="text-emerald-300">CUOIS Campus Data Vault</code>) for effortless sharing and disaster recovery.
+            </p>
+            <div className="pt-1 flex items-center justify-between text-[11px] font-mono border-t border-slate-800/80">
+              <span className="text-slate-400">
+                {isDriveConnected
+                  ? `${driveBackups.length} snapshot(s) in Drive`
+                  : 'Not connected yet'}
+              </span>
+              {isDriveConnected ? (
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await syncAllToDrive('Settings quick snapshot');
+                      setDriveQuickSyncSuccess(`Created snapshot: ${res.name}`);
+                      setTimeout(() => setDriveQuickSyncSuccess(null), 4000);
+                    } catch {
+                      // handled in context
+                    }
+                  }}
+                  disabled={isDriveSyncing}
+                  className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-medium cursor-pointer"
+                >
+                  <CloudUpload className={`w-3 h-3 ${isDriveSyncing ? 'animate-pulse' : ''}`} />
+                  <span>{isDriveSyncing ? 'Syncing...' : 'Sync to Drive'}</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => setIsDriveVaultOpen(true)}
+                  className="text-emerald-400 hover:text-emerald-300 font-medium cursor-pointer"
+                >
+                  {hasScopeError ? 'Authorize Drive →' : 'Connect Drive →'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Drive Account & Fast Vault Action */}
+        <div className="p-3.5 rounded-lg bg-[#0E1726]/60 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 font-mono text-xs">
+              {driveUser?.displayName ? driveUser.displayName[0] : 'G'}
+            </div>
+            <div>
+              <span className="font-semibold text-slate-200">
+                {driveUser ? driveUser.email : 'Google Account: Not Connected'}
+              </span>
+              <p className="text-[11px] text-slate-400">
+                {driveUser
+                  ? 'Access tokens are strictly cached in-memory and never exposed in browser storage.'
+                  : 'Click "Open Cloud Vault" to authenticate via Google Sign-In and authorize Drive access.'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="primary"
+              size="sm"
+              icon={CloudUpload}
+              onClick={() => setIsDriveVaultOpen(true)}
+              className="text-xs"
+            >
+              {isDriveConnected ? 'Manage Cloud Vault' : 'Connect & Sync Drive'}
+            </Button>
+          </div>
+        </div>
+      </div>
+
       {/* Danger Zone */}
       <div className="p-5 rounded-xl bg-rose-950/20 border border-rose-500/40 space-y-3">
         <div className="flex items-center gap-2 text-xs font-mono font-semibold uppercase tracking-wider text-rose-400">
@@ -640,6 +822,12 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Google Drive Synchronization Vault Modal */}
+      <GoogleDriveSyncModal
+        isOpen={isDriveVaultOpen}
+        onClose={() => setIsDriveVaultOpen(false)}
+      />
     </div>
   );
 };

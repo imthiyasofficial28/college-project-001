@@ -1142,6 +1142,43 @@ app.get('/api/data/export', authenticate, requireRole(['SYSTEM_OWNER', 'ADMINIST
   res.json(db.getRaw());
 });
 
+app.post('/api/data/restore', authenticate, requireRole(['SYSTEM_OWNER', 'ADMINISTRATOR']), (req: AuthenticatedRequest, res) => {
+  try {
+    const backupData = req.body;
+    if (!backupData || typeof backupData !== 'object') {
+      res.status(400).json({ error: 'Valid database backup JSON payload required' });
+      return;
+    }
+    db.restoreData(backupData);
+    broadcastRealtimeEvent('DATA_RESTORED', { restoredAt: new Date().toISOString() });
+    res.json({ success: true, message: 'Campus data restored successfully from snapshot.' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to restore dataset snapshot' });
+  }
+});
+
+// Cross-device Google Drive master database sync endpoint
+app.post('/api/data/sync-from-drive', (req, res) => {
+  try {
+    const backupData = req.body;
+    if (!backupData || typeof backupData !== 'object' || !backupData.institution) {
+      res.status(400).json({ error: 'Valid CUOIS database backup JSON payload required' });
+      return;
+    }
+    db.restoreData(backupData);
+    broadcastRealtimeEvent('DATA_RESTORED', {
+      restoredAt: new Date().toISOString(),
+      source: 'google_drive_master_sync',
+    });
+    res.json({
+      success: true,
+      message: 'Campus database successfully synchronized from Google Drive master vault.',
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to sync dataset from Google Drive' });
+  }
+});
+
 // Assignments & Academic Evaluations
 app.get('/api/assignments', (req, res) => {
   res.json(db.getAssignments());
