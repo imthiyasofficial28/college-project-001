@@ -1,10 +1,11 @@
 /**
  * CUOIS — Client-side Standalone Storage Fallback
- * Provides full functionality when deployed to static hosts (like GitHub Pages)
- * where the Node.js Express backend server is not running.
+ * Provides full offline and static hosting functionality (Vercel, GitHub Pages, Netlify)
+ * where the Node.js Express backend server is not running or returns 404 for /api endpoints.
  */
 
 import { Institution, User, DigitalTwinNode } from '../types/index.ts';
+import seedDatabase from '../../data/cuois_database.json';
 
 const STORAGE_PREFIX = 'cuois_standalone_';
 
@@ -31,7 +32,7 @@ export const standaloneStorage = {
 
   initDefault() {
     if (!localStorage.getItem(STORAGE_PREFIX + 'initialized')) {
-      const defaultInstitution: Institution = {
+      const defaultInstitution: Institution = (seedDatabase as any).institution || {
         id: 'inst-cuois-primary',
         name: 'Apex Institute of Science & Technology',
         code: 'AIST-CAMPUS',
@@ -65,37 +66,56 @@ export const standaloneStorage = {
         updatedAt: new Date().toISOString(),
       };
 
-      const defaultNodes: DigitalTwinNode[] = [
-        {
-          id: 'twin-node-adm',
-          name: 'Academic Central Administrative Complex',
-          code: 'ADMIN-A',
-          category: 'ADMIN',
-          x: 48,
-          y: 35,
-          floors: 6,
-          capacity: 1200,
-          occupancy: 72,
-          temperatureF: 71.4,
-          powerKw: 342.8,
-          airQualityAqi: 28,
-          activeLabs: ['Core Intelligence Lab', 'Executive Boardroom'],
-          maintenanceAlerts: 0,
-          securityStatus: 'NORMAL',
-          description: 'Central administrative and executive operations complex.',
-          weatherCondition: 'Sunny',
-          weatherHumidity: 45,
-          weatherWindMph: 4.8,
-          weatherLastUpdated: new Date().toISOString(),
-        },
-      ];
+      const existingUsers: User[] = (seedDatabase as any).users?.map((u: any) => {
+        const { passwordHash, salt, ...safeUser } = u;
+        return safeUser;
+      }) || [defaultOwner];
+
+      // Ensure Imthiyas is in users
+      if (!existingUsers.some((u) => u.username?.toUpperCase() === 'IMTHIYAS')) {
+        existingUsers.unshift(defaultOwner);
+      }
 
       setStorage('institution', defaultInstitution);
-      setStorage('users', [defaultOwner]);
-      setStorage('digitalTwinNodes', defaultNodes);
+      setStorage('users', existingUsers);
+      setStorage('digitalTwinNodes', (seedDatabase as any).digitalTwinNodes || []);
+      setStorage('departments', (seedDatabase as any).departments || []);
+      setStorage('programs', (seedDatabase as any).programs || []);
+      setStorage('academicYears', (seedDatabase as any).academicYears || []);
+      setStorage('semesters', (seedDatabase as any).semesters || []);
+      setStorage('sections', (seedDatabase as any).sections || []);
+      setStorage('subjects', (seedDatabase as any).subjects || []);
+      setStorage('students', (seedDatabase as any).students || []);
+      setStorage('faculty', (seedDatabase as any).faculty || []);
+      setStorage('staff', (seedDatabase as any).staff || []);
+      setStorage('attendance', (seedDatabase as any).attendance || []);
+      setStorage('timetable', (seedDatabase as any).timetable || []);
+      setStorage('assignments', (seedDatabase as any).assignments || []);
+      setStorage('examinations', (seedDatabase as any).examinations || []);
+      setStorage('examSchedules', (seedDatabase as any).examSchedules || []);
+      setStorage('results', (seedDatabase as any).results || []);
+      setStorage('announcements', (seedDatabase as any).announcements || []);
+      setStorage('notifications', (seedDatabase as any).notifications || []);
+      setStorage('complaints', (seedDatabase as any).complaints || []);
+      setStorage('facilities', (seedDatabase as any).facilities || []);
+      setStorage('maintenanceRequests', (seedDatabase as any).maintenanceRequests || []);
+      setStorage('libraryItems', (seedDatabase as any).libraryItems || []);
+      setStorage('libraryTransactions', (seedDatabase as any).libraryTransactions || []);
+      setStorage('hostels', (seedDatabase as any).hostels || []);
+      setStorage('transportRoutes', (seedDatabase as any).transportRoutes || []);
+      setStorage('vehicles', (seedDatabase as any).vehicles || []);
+      setStorage('visitors', (seedDatabase as any).visitors || []);
+      setStorage('securityZones', (seedDatabase as any).securityZones || []);
+      setStorage('securityIncidents', (seedDatabase as any).securityIncidents || []);
+      setStorage('auditLogs', (seedDatabase as any).auditLogs || []);
+      setStorage('aiInsights', (seedDatabase as any).aiInsights || []);
+      setStorage('surveys', (seedDatabase as any).surveys || []);
+      setStorage('confidentialReports', (seedDatabase as any).confidentialReports || []);
+
       setStorage('isConfigured', true);
       setStorage('credentials', {
         'usr-imthiyas-sovereign': 'Imthiyas@12345',
+        'usr_owner_01': 'Imthiyas@12345',
         'IMTHIYAS': 'Imthiyas@12345',
         'imthiyasofficial28@gmail.com': 'Imthiyas@12345',
       });
@@ -105,6 +125,7 @@ export const standaloneStorage = {
       const creds = getStorage<Record<string, string>>('credentials', {});
       if (!creds['IMTHIYAS'] && !creds['usr-imthiyas-sovereign']) {
         creds['usr-imthiyas-sovereign'] = 'Imthiyas@12345';
+        creds['usr_owner_01'] = 'Imthiyas@12345';
         creds['IMTHIYAS'] = 'Imthiyas@12345';
         creds['imthiyasofficial28@gmail.com'] = 'Imthiyas@12345';
         setStorage('credentials', creds);

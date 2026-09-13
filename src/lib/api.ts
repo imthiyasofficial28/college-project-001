@@ -107,6 +107,18 @@ export function recordLocalMemorySync(customIso?: string): string {
   return timestamp;
 }
 
+function isStaticPlatform(): boolean {
+  if (typeof window === 'undefined') return false;
+  const h = window.location.hostname;
+  return (
+    h.includes('vercel.app') ||
+    h.includes('github.io') ||
+    h.includes('netlify.app') ||
+    h.includes('pages.dev') ||
+    h.includes('surge.sh')
+  );
+}
+
 function handleStandaloneFallback<T>(endpoint: string, options: RequestInit = {}): T {
   const method = (options.method || 'GET').toUpperCase();
   let body: any = {};
@@ -114,10 +126,87 @@ function handleStandaloneFallback<T>(endpoint: string, options: RequestInit = {}
     if (options.body) body = JSON.parse(options.body as string);
   } catch {}
 
+  // 1. BOOTSTRAP STATUS
   if (endpoint === '/api/bootstrap/status') {
+    const isConfigured = standaloneStorage.get<boolean>('isConfigured', true);
     const inst = standaloneStorage.get<Institution | null>('institution', null);
-    return { isConfigured: true, institution: inst } as unknown as T;
+    return { isConfigured, institution: inst } as unknown as T;
   }
+
+  // 2. BOOTSTRAP INITIALIZE
+  if (endpoint === '/api/bootstrap/initialize') {
+    const { institution, owner } = body;
+    if (!owner || !owner.email || !owner.fullName) {
+      throw new Error('System Owner full name, email, and password are required.');
+    }
+
+    const instData: Institution = {
+      id: 'inst-' + Date.now(),
+      name: institution?.name?.trim() || 'Campus University',
+      code: (institution?.code?.trim() || 'CAMPUS').toUpperCase(),
+      tagline: institution?.tagline || 'Sovereign Campus Intelligence & Operations Platform',
+      address: institution?.address?.trim() || '',
+      contactEmail: institution?.contactEmail?.trim() || owner.email.trim(),
+      contactPhone: institution?.contactPhone?.trim() || '',
+      website: institution?.website?.trim() || 'https://cuois.internal',
+      establishedYear: new Date().getFullYear(),
+      timezone: 'UTC',
+      academicCalendarType: 'SEMESTER',
+      accreditation: 'Accredited Sovereign Campus Institution',
+      isConfigured: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const ownerUser: User = {
+      id: 'usr-owner-' + Date.now(),
+      username: (owner.fullName || 'IMTHIYAS').toUpperCase().replace(/[^A-Z0-9]/g, '_') || 'IMTHIYAS',
+      fullName: owner.fullName.trim(),
+      email: owner.email.trim(),
+      role: 'SYSTEM_OWNER',
+      isActive: true,
+      mfaEnabled: true,
+      failedLoginAttempts: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    standaloneStorage.set('institution', instData);
+    standaloneStorage.set('isConfigured', true);
+    standaloneStorage.set('users', [ownerUser]);
+
+    const password = owner.password || 'Imthiyas@12345';
+    standaloneStorage.setUserPassword(ownerUser.id, ownerUser.username, ownerUser.email, password);
+
+    const session: AuthSession = {
+      token: 'standalone-token-' + Date.now(),
+      user: ownerUser,
+      expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+      rolePermissions: ['*'],
+    };
+    standaloneStorage.set('current_session_user_id', ownerUser.id);
+    setStoredToken(session.token);
+    recordLocalMemorySync();
+
+    return {
+      success: true,
+      message: 'Institution successfully initialized.',
+      institution: instData,
+      session,
+    } as unknown as T;
+  }
+
+  // 3. BOOTSTRAP RESET
+  if (endpoint === '/api/bootstrap/reset') {
+    standaloneStorage.set('isConfigured', false);
+    standaloneStorage.set('institution', null);
+    standaloneStorage.set('current_session_user_id', null);
+    setStoredToken('');
+    recordLocalMemorySync();
+    return { success: true, message: 'Institution reset successfully.' } as unknown as T;
+  }
+
+  // 4. INSTITUTION
   if (endpoint === '/api/institution') {
     if (method === 'PUT') {
       const existing = standaloneStorage.get<Institution | null>('institution', null) || ({} as Institution);
@@ -128,6 +217,8 @@ function handleStandaloneFallback<T>(endpoint: string, options: RequestInit = {}
     }
     return standaloneStorage.get<Institution | null>('institution', null) as unknown as T;
   }
+
+  // 5. AUTHENTICATION & SESSIONS
   if (endpoint === '/api/auth/login') {
     const { identifier, username, email, password } = body;
     const cleanId = (identifier || username || email || '').trim();
@@ -164,6 +255,7 @@ function handleStandaloneFallback<T>(endpoint: string, options: RequestInit = {}
     recordLocalMemorySync();
     return { session } as unknown as T;
   }
+
   if (endpoint === '/api/auth/me') {
     const token = getStoredToken();
     if (!token) {
@@ -171,7 +263,7 @@ function handleStandaloneFallback<T>(endpoint: string, options: RequestInit = {}
     }
     const currentUserId = standaloneStorage.get<string | null>('current_session_user_id', null);
     const users = standaloneStorage.get<User[]>('users', []);
-    const user = currentUserId ? users.find((u) => u.id === currentUserId) : null;
+    const user = currentUserId ? users.find((u) => u.id === currentUserId) : users[0];
     if (!user) {
       setStoredToken('');
       throw new Error('Session invalid or user not found.');
@@ -182,14 +274,17 @@ function handleStandaloneFallback<T>(endpoint: string, options: RequestInit = {}
       rolePermissions: user.role === 'SYSTEM_OWNER' ? ['*'] : ['READ_CAMPUS'],
     } as unknown as T;
   }
+
   if (endpoint === '/api/auth/logout') {
     standaloneStorage.set('current_session_user_id', null);
     setStoredToken('');
     return { success: true, message: 'Logged out successfully.' } as unknown as T;
   }
+
   if (endpoint === '/api/auth/personalized-entry') {
     throw new Error('Direct entry without password verification is strictly disabled. Please enter your Member ID and Password.');
   }
+
   if (endpoint === '/api/auth/update-profile') {
     const currentUserId = standaloneStorage.get<string | null>('current_session_user_id', null);
     const users = standaloneStorage.get<User[]>('users', []);
@@ -202,6 +297,7 @@ function handleStandaloneFallback<T>(endpoint: string, options: RequestInit = {}
     }
     return { success: true, user: body } as unknown as T;
   }
+
   if (endpoint === '/api/auth/change-password') {
     const currentUserId = standaloneStorage.get<string | null>('current_session_user_id', null);
     if (!currentUserId) {
@@ -226,6 +322,8 @@ function handleStandaloneFallback<T>(endpoint: string, options: RequestInit = {}
     recordLocalMemorySync();
     return { success: true, message: 'Password updated successfully.' } as unknown as T;
   }
+
+  // 6. DIGITAL TWIN NODES
   if (endpoint === '/api/digital-twin/nodes') {
     if (method === 'POST') {
       const nodes = standaloneStorage.get<DigitalTwinNode[]>('digitalTwinNodes', []);
@@ -241,12 +339,13 @@ function handleStandaloneFallback<T>(endpoint: string, options: RequestInit = {}
     }
     return standaloneStorage.get<DigitalTwinNode[]>('digitalTwinNodes', []) as unknown as T;
   }
+
   if (endpoint.startsWith('/api/digital-twin/nodes/')) {
     const parts = endpoint.split('/');
     const id = parts[parts.length - 1];
     const nodes = standaloneStorage.get<DigitalTwinNode[]>('digitalTwinNodes', []);
     if (method === 'PUT') {
-      const idx = nodes.findIndex(n => n.id === id);
+      const idx = nodes.findIndex((n) => n.id === id);
       if (idx >= 0) {
         nodes[idx] = { ...nodes[idx], ...body, lastTelemetryUpdate: new Date().toISOString() };
         standaloneStorage.set('digitalTwinNodes', nodes);
@@ -255,12 +354,14 @@ function handleStandaloneFallback<T>(endpoint: string, options: RequestInit = {}
       }
     }
     if (method === 'DELETE') {
-      const filtered = nodes.filter(n => n.id !== id);
+      const filtered = nodes.filter((n) => n.id !== id);
       standaloneStorage.set('digitalTwinNodes', filtered);
       recordLocalMemorySync();
       return { success: true } as unknown as T;
     }
   }
+
+  // 7. USER MANAGEMENT
   if (endpoint === '/api/users') {
     if (method === 'POST') {
       const users = standaloneStorage.get<User[]>('users', []);
@@ -281,41 +382,191 @@ function handleStandaloneFallback<T>(endpoint: string, options: RequestInit = {}
     }
     return standaloneStorage.get<User[]>('users', []) as unknown as T;
   }
+
   if (endpoint.startsWith('/api/users/')) {
     const parts = endpoint.split('/');
     const id = parts[3];
     const subAction = parts[4];
     const users = standaloneStorage.get<User[]>('users', []);
-    const idx = users.findIndex(u => u.id === id);
+    const idx = users.findIndex((u) => u.id === id);
     if (subAction === 'reset-password') {
       return { success: true, message: 'Password reset successfully' } as unknown as T;
     }
-    if (method === 'PUT' && idx >= 0) {
-      users[idx] = { ...users[idx], ...body, updatedAt: new Date().toISOString() };
-      standaloneStorage.set('users', users);
-      recordLocalMemorySync();
-      return users[idx] as unknown as T;
+    if (method === 'PUT' || method === 'PATCH') {
+      if (idx >= 0) {
+        users[idx] = { ...users[idx], ...body, updatedAt: new Date().toISOString() };
+        if (body.password) {
+          standaloneStorage.setUserPassword(users[idx].id, users[idx].username, users[idx].email, body.password);
+        }
+        standaloneStorage.set('users', users);
+        recordLocalMemorySync();
+        return users[idx] as unknown as T;
+      }
     }
     if (method === 'DELETE') {
-      const filtered = users.filter(u => u.id !== id);
+      const filtered = users.filter((u) => u.id !== id);
       standaloneStorage.set('users', filtered);
       recordLocalMemorySync();
       return { success: true } as unknown as T;
     }
   }
 
-  // Fallback defaults
-  if (endpoint === '/api/notifications') return [] as unknown as T;
+  // 8. GENERIC COLLECTION CRUD MAP
+  const collectionRoutes: Record<string, string> = {
+    '/api/departments': 'departments',
+    '/api/programs': 'programs',
+    '/api/academic-years': 'academicYears',
+    '/api/semesters': 'semesters',
+    '/api/sections': 'sections',
+    '/api/subjects': 'subjects',
+    '/api/students': 'students',
+    '/api/faculty': 'faculty',
+    '/api/staff': 'staff',
+    '/api/attendance': 'attendance',
+    '/api/timetable': 'timetable',
+    '/api/complaints': 'complaints',
+    '/api/facilities': 'facilities',
+    '/api/maintenance': 'maintenanceRequests',
+    '/api/library/items': 'libraryItems',
+    '/api/library/transactions': 'libraryTransactions',
+    '/api/hostels': 'hostels',
+    '/api/transport/vehicles': 'vehicles',
+    '/api/transport/routes': 'transportRoutes',
+    '/api/visitors': 'visitors',
+    '/api/security/zones': 'securityZones',
+    '/api/security/incidents': 'securityIncidents',
+    '/api/announcements': 'announcements',
+    '/api/notifications': 'notifications',
+    '/api/audit-logs': 'auditLogs',
+    '/api/assignments': 'assignments',
+    '/api/examinations': 'examinations',
+    '/api/exam-schedules': 'examSchedules',
+    '/api/results': 'results',
+    '/api/surveys': 'surveys',
+    '/api/confidential-reports': 'confidentialReports',
+    '/api/academic-risk/students': 'studentRiskIndicators',
+  };
+
+  // Check exact collection route
+  if (collectionRoutes[endpoint]) {
+    const key = collectionRoutes[endpoint];
+    if (method === 'GET') {
+      return standaloneStorage.get<any[]>(key, []) as unknown as T;
+    }
+    if (method === 'POST') {
+      if (key === 'attendance' && body.records) {
+        const list = standaloneStorage.get<any[]>(key, []);
+        const merged = [...list, ...body.records];
+        standaloneStorage.set(key, merged);
+        recordLocalMemorySync();
+        return { success: true, count: body.records.length } as unknown as T;
+      }
+      const list = standaloneStorage.get<any[]>(key, []);
+      const newItem = {
+        ...body,
+        id: (body.id || `${key.slice(0, 4)}-${Date.now()}`),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      list.push(newItem);
+      standaloneStorage.set(key, list);
+      recordLocalMemorySync();
+      return newItem as unknown as T;
+    }
+  }
+
+  // Check item-level route (/api/departments/:id, etc.)
+  for (const [basePath, key] of Object.entries(collectionRoutes)) {
+    if (endpoint.startsWith(basePath + '/')) {
+      const rest = endpoint.replace(basePath + '/', '');
+      const [itemId, subAction] = rest.split('/');
+      const list = standaloneStorage.get<any[]>(key, []);
+      const idx = list.findIndex((item) => String(item.id) === itemId);
+
+      if (subAction === 'read' && method === 'PATCH') {
+        if (idx >= 0) list[idx].read = true;
+        standaloneStorage.set(key, list);
+        return { success: true } as unknown as T;
+      }
+
+      if (subAction === 'checkout' && method === 'POST') {
+        if (idx >= 0) {
+          list[idx].status = 'CHECKED_OUT';
+          list[idx].checkOutTime = new Date().toISOString();
+        }
+        standaloneStorage.set(key, list);
+        return list[idx] as unknown as T;
+      }
+
+      if (subAction === 'respond' && method === 'POST') {
+        return { success: true, message: 'Response submitted successfully.' } as unknown as T;
+      }
+
+      if (subAction === 'reveal' && method === 'POST') {
+        if (idx >= 0) list[idx].isRevealed = true;
+        standaloneStorage.set(key, list);
+        return list[idx] as unknown as T;
+      }
+
+      if (method === 'PUT' || method === 'PATCH') {
+        if (idx >= 0) {
+          list[idx] = { ...list[idx], ...body, updatedAt: new Date().toISOString() };
+          standaloneStorage.set(key, list);
+          recordLocalMemorySync();
+          return list[idx] as unknown as T;
+        }
+      }
+
+      if (method === 'DELETE') {
+        const filtered = list.filter((item) => String(item.id) !== itemId);
+        standaloneStorage.set(key, filtered);
+        recordLocalMemorySync();
+        return { success: true } as unknown as T;
+      }
+    }
+  }
+
+  // 9. SPECIAL ENDPOINTS
+  if (endpoint === '/api/notifications/read-all') {
+    const notifs = standaloneStorage.get<any[]>('notifications', []).map((n) => ({ ...n, read: true }));
+    standaloneStorage.set('notifications', notifs);
+    return { success: true } as unknown as T;
+  }
+
   if (endpoint === '/api/telemetry') {
     return {
       activeConnections: 1,
-      totalRequestsToday: 12,
+      totalRequestsToday: 24,
       databaseSizeBytes: 204800,
       memoryUsageMb: 85,
-      cpuLoadPercent: 4.2,
-      uptimeSeconds: 3600,
+      cpuLoadPercent: 3.8,
+      uptimeSeconds: 7200,
       systemHealth: 'HEALTHY',
     } as unknown as T;
+  }
+
+  if (endpoint === '/api/ai/insights') {
+    return (standaloneStorage.get<any[]>('aiInsights', []) || []) as unknown as T;
+  }
+
+  if (endpoint === '/api/roles') {
+    return [
+      { code: 'SYSTEM_OWNER', name: 'System Owner', description: 'Complete sovereign governance and infrastructure control', permissions: ['*'] },
+      { code: 'ADMINISTRATOR', name: 'Campus Administrator', description: 'Full academic and operational administration', permissions: ['CAMPUS_ADMIN', 'MANAGE_USERS', 'MANAGE_DEPARTMENTS', 'VIEW_TELEMETRY'] },
+      { code: 'FACULTY', name: 'Faculty Member', description: 'Academic curriculum, course delivery, grading and student advisory', permissions: ['VIEW_CAMPUS', 'MANAGE_ASSIGNMENTS', 'MARK_ATTENDANCE', 'SUBMIT_GRADES'] },
+      { code: 'STUDENT', name: 'Enrolled Student', description: 'Academic coursework, timetable, personal attendance and campus services', permissions: ['VIEW_CAMPUS', 'VIEW_TIMETABLE', 'SUBMIT_ASSIGNMENT', 'RAISE_COMPLAINT'] },
+      { code: 'STAFF', name: 'Operational Staff', description: 'Facility maintenance, security, library and campus logistics', permissions: ['VIEW_CAMPUS', 'MANAGE_MAINTENANCE', 'LOG_INCIDENT'] },
+    ] as unknown as T;
+  }
+
+  if (endpoint === '/api/data/export') {
+    const inst = standaloneStorage.get('institution', null);
+    const users = standaloneStorage.get('users', []);
+    return { institution: inst, users } as unknown as T;
+  }
+
+  if (endpoint === '/api/data/import') {
+    return { success: true, createdCount: 1, updatedCount: 0, errors: [] } as unknown as T;
   }
 
   return ([] as unknown) as T;
@@ -332,9 +583,8 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const method = (options.method || 'GET').toUpperCase();
   const isMutation = method !== 'GET' && method !== 'HEAD';
 
-  // If hosted on GitHub Pages static hosting or offline, use standalone storage
-  const isGitHubPages = typeof window !== 'undefined' && window.location.hostname.includes('github.io');
-  if (isStandaloneMode || isGitHubPages) {
+  // If already identified as standalone mode or running on static hosting platforms (Vercel, Netlify, GitHub Pages)
+  if (isStandaloneMode || isStaticPlatform()) {
     return handleStandaloneFallback<T>(endpoint, options);
   }
 
@@ -347,11 +597,17 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     const contentType = res.headers.get('content-type') || '';
     const isHtml = contentType.includes('text/html');
 
-    // Only switch to standalone if a static web server responded with HTML for an /api/ endpoint
-    if (isHtml && endpoint.startsWith('/api/')) {
-      console.warn(`[CUOIS] Backend returned HTML for ${endpoint} (static web server detected). Switching to standalone mode.`);
-      isStandaloneMode = true;
-      return handleStandaloneFallback<T>(endpoint, options);
+    // Detect if platform returned HTML (SPA fallback) or 404 for an /api/ endpoint (static host without backend)
+    if ((isHtml || res.status === 404) && endpoint.startsWith('/api/')) {
+      const errorData = await res.json().catch(() => null);
+      // If the backend didn't return a structured error JSON with an explicit error message,
+      // it's a host 404 (e.g., Vercel / Netlify / Nginx) where the backend is not mounted.
+      if (!errorData || typeof errorData.error !== 'string') {
+        console.warn(`[CUOIS] Host platform 404/HTML returned for ${endpoint}. Activating standalone mode.`);
+        isStandaloneMode = true;
+        return handleStandaloneFallback<T>(endpoint, options);
+      }
+      throw new Error(errorData.error);
     }
 
     if (!res.ok) {
@@ -365,9 +621,13 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     }
     return data;
   } catch (err: any) {
-    // If fetch failed completely (network disconnected or DNS failure)
-    if (err.name === 'TypeError' || (err.message && err.message.toLowerCase().includes('fetch'))) {
-      console.warn('[CUOIS] Network unreachable, activating standalone mode:', err.message);
+    // If fetch failed completely (network disconnected, DNS failure, CORS, or 404 from host)
+    if (
+      err.name === 'TypeError' ||
+      (err.message && err.message.toLowerCase().includes('fetch')) ||
+      (err.message && err.message.includes('404'))
+    ) {
+      console.warn('[CUOIS] Backend unreachable, activating standalone mode:', err.message);
       isStandaloneMode = true;
       return handleStandaloneFallback<T>(endpoint, options);
     }
