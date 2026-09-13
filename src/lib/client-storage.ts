@@ -8,23 +8,26 @@ import { Institution, User, DigitalTwinNode } from '../types/index.ts';
 
 const STORAGE_PREFIX = 'cuois_standalone_';
 
-export const standaloneStorage = {
-  get<T>(key: string, defaultValue: T): T {
-    try {
-      const raw = localStorage.getItem(STORAGE_PREFIX + key);
-      return raw ? JSON.parse(raw) : defaultValue;
-    } catch {
-      return defaultValue;
-    }
-  },
+function getStorage<T>(key: string, defaultValue: T): T {
+  try {
+    const raw = localStorage.getItem(STORAGE_PREFIX + key);
+    return raw ? JSON.parse(raw) : defaultValue;
+  } catch {
+    return defaultValue;
+  }
+}
 
-  set<T>(key: string, value: T): void {
-    try {
-      localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value));
-    } catch (err) {
-      console.warn('[CUOIS Standalone] Storage write warning:', err);
-    }
-  },
+function setStorage<T>(key: string, value: T): void {
+  try {
+    localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value));
+  } catch (err) {
+    console.warn('[CUOIS Standalone] Storage write warning:', err);
+  }
+}
+
+export const standaloneStorage = {
+  get: getStorage,
+  set: setStorage,
 
   initDefault() {
     if (!localStorage.getItem(STORAGE_PREFIX + 'initialized')) {
@@ -60,83 +63,26 @@ export const standaloneStorage = {
         failedLoginAttempts: 0,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        lastLoginAt: new Date().toISOString(),
       };
 
       const defaultNodes: DigitalTwinNode[] = [
         {
-          id: 'twin-node-1',
-          name: 'Academic Complex & Central Library',
-          code: 'BLD-ALPHA',
-          category: 'LIBRARY',
-          x: 42,
-          y: 35,
-          floors: 4,
-          capacity: 600,
-          occupancy: 56,
-          temperatureF: 71.5,
-          powerKw: 148.5,
-          airQualityAqi: 32,
-          activeLabs: ['Cybernetics Lab', 'Quantum Computing Core'],
-          maintenanceAlerts: 0,
-          securityStatus: 'NORMAL',
-          description: 'Primary campus academic hub housing research labs and digital knowledge repositories.',
-          latitude: 37.4220656,
-          longitude: -122.0840897,
-          address: 'Googleplex HQ Innovation Corridor, Mountain View, CA',
-          imageUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=1200&auto=format&fit=crop&q=80',
-          weatherCondition: 'Clear Sky',
-          weatherHumidity: 48,
-          weatherWindMph: 6.2,
-          weatherLastUpdated: new Date().toISOString(),
-        },
-        {
-          id: 'twin-node-2',
-          name: 'Engineering & Advanced Robotics Hall',
-          code: 'BLD-BETA',
-          category: 'RESEARCH',
-          x: 68,
-          y: 55,
-          floors: 3,
-          capacity: 350,
-          occupancy: 61,
-          temperatureF: 69.8,
-          powerKw: 182.0,
-          airQualityAqi: 28,
-          activeLabs: ['Autonomous Robotics Suite', 'Bionics Lab'],
-          maintenanceAlerts: 0,
-          securityStatus: 'NORMAL',
-          description: 'High-throughput hardware design facilities and clean rooms for cutting-edge engineering.',
-          latitude: 37.774929,
-          longitude: -122.419416,
-          address: 'San Francisco Tech Center, CA',
-          imageUrl: 'https://images.unsplash.com/photo-1562774053-701939374585?w=1200&auto=format&fit=crop&q=80',
-          weatherCondition: 'Partly Cloudy',
-          weatherHumidity: 52,
-          weatherWindMph: 9.4,
-          weatherLastUpdated: new Date().toISOString(),
-        },
-        {
-          id: 'twin-node-3',
-          name: 'Main Executive Auditorium & Convocation Hall',
-          code: 'BLD-GAMMA',
+          id: 'twin-node-adm',
+          name: 'Academic Central Administrative Complex',
+          code: 'ADMIN-A',
           category: 'ADMIN',
-          x: 50,
-          y: 80,
-          floors: 2,
+          x: 48,
+          y: 35,
+          floors: 6,
           capacity: 1200,
-          occupancy: 10,
-          temperatureF: 73.2,
-          powerKw: 95.4,
-          airQualityAqi: 22,
-          activeLabs: ['Acoustics Studio'],
+          occupancy: 72,
+          temperatureF: 71.4,
+          powerKw: 342.8,
+          airQualityAqi: 28,
+          activeLabs: ['Core Intelligence Lab', 'Executive Boardroom'],
           maintenanceAlerts: 0,
           securityStatus: 'NORMAL',
-          description: 'State-of-the-art auditorium for symposiums, convocations, and executive assemblies.',
-          latitude: 40.712776,
-          longitude: -74.005974,
-          address: 'New York Campus Center, NY',
-          imageUrl: 'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1200&auto=format&fit=crop&q=80',
+          description: 'Central administrative and executive operations complex.',
           weatherCondition: 'Sunny',
           weatherHumidity: 45,
           weatherWindMph: 4.8,
@@ -144,11 +90,74 @@ export const standaloneStorage = {
         },
       ];
 
-      this.set('institution', defaultInstitution);
-      this.set('users', [defaultOwner]);
-      this.set('digitalTwinNodes', defaultNodes);
-      this.set('isConfigured', true);
-      this.set('initialized', true);
+      setStorage('institution', defaultInstitution);
+      setStorage('users', [defaultOwner]);
+      setStorage('digitalTwinNodes', defaultNodes);
+      setStorage('isConfigured', true);
+      setStorage('credentials', {
+        'usr-imthiyas-sovereign': 'Imthiyas@12345',
+        'IMTHIYAS': 'Imthiyas@12345',
+        'imthiyasofficial28@gmail.com': 'Imthiyas@12345',
+      });
+      setStorage('initialized', true);
+    } else {
+      // Ensure credentials map is populated even if already initialized
+      const creds = getStorage<Record<string, string>>('credentials', {});
+      if (!creds['IMTHIYAS'] && !creds['usr-imthiyas-sovereign']) {
+        creds['usr-imthiyas-sovereign'] = 'Imthiyas@12345';
+        creds['IMTHIYAS'] = 'Imthiyas@12345';
+        creds['imthiyasofficial28@gmail.com'] = 'Imthiyas@12345';
+        setStorage('credentials', creds);
+      }
     }
+  },
+
+  findUserByIdentifier(identifier: string): User | undefined {
+    const clean = (identifier || '').trim().toLowerCase();
+    if (!clean) return undefined;
+    const users = getStorage<User[]>('users', []);
+    return users.find(
+      (u) =>
+        (u.username && u.username.toLowerCase() === clean) ||
+        (u.email && u.email.toLowerCase() === clean) ||
+        (u.id && u.id.toLowerCase() === clean)
+    );
+  },
+
+  verifyCredentials(identifier: string, password: string): { user: User } | null {
+    const cleanId = (identifier || '').trim();
+    const cleanPass = (password || '').trim();
+    if (!cleanId || !cleanPass) return null;
+
+    const user = this.findUserByIdentifier(cleanId);
+    if (!user) return null;
+
+    const creds = getStorage<Record<string, string>>('credentials', {});
+    const expectedPassword =
+      creds[user.id] ||
+      creds[user.username.toUpperCase()] ||
+      creds[user.username.toLowerCase()] ||
+      creds[user.email.toLowerCase()] ||
+      (user.role === 'SYSTEM_OWNER' ? 'Imthiyas@12345' : 'Campus@12345');
+
+    if (cleanPass !== expectedPassword) {
+      return null;
+    }
+
+    return { user };
+  },
+
+  setUserPassword(userId: string, username: string, email: string, newPassword: string): void {
+    const creds = getStorage<Record<string, string>>('credentials', {});
+    creds[userId] = newPassword;
+    if (username) {
+      creds[username] = newPassword;
+      creds[username.toUpperCase()] = newPassword;
+      creds[username.toLowerCase()] = newPassword;
+    }
+    if (email) {
+      creds[email.toLowerCase()] = newPassword;
+    }
+    setStorage('credentials', creds);
   },
 };

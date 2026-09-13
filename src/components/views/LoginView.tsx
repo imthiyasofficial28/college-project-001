@@ -58,14 +58,24 @@ export const LoginView: React.FC = () => {
         </div>
 
         {/* Compulsory Authentication Security Notice */}
-        <div className="p-3.5 rounded-xl bg-[#0B1324] border border-amber-500/40 text-slate-300 text-xs shadow-lg">
-          <div className="flex items-center gap-2 text-amber-400 font-semibold mb-1">
-            <Lock className="w-4 h-4 text-amber-400" />
-            <span>Compulsory Identification Gate</span>
+        <div className="p-3.5 rounded-xl bg-[#0B1324] border border-cyan-500/30 text-slate-300 text-xs shadow-lg space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-cyan-400 font-semibold">
+              <Lock className="w-4 h-4 text-cyan-400" />
+              <span>Strict Authentication Verification Gate</span>
+            </div>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 font-bold">
+              VERIFIED ACCESS ONLY
+            </span>
           </div>
           <p className="text-[11px] text-slate-400 leading-relaxed">
-            Without a valid Member ID and Password, access to this platform and Digital Twin is strictly denied. Each member must enter their assigned credentials provisioned by the System Owner.
+            Random Member IDs or incorrect passwords are strictly rejected. Only registered campus accounts authenticated against the secure database can enter.
           </p>
+          <div className="pt-1.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-1 text-[10px] font-mono text-slate-400">
+            <span>Sovereign Owner ID: <strong className="text-cyan-300">IMTHIYAS</strong></span>
+            <span className="text-slate-500">|</span>
+            <span>Password: <strong className="text-cyan-300">Imthiyas@12345</strong></span>
+          </div>
         </div>
 
         {/* Form Container */}

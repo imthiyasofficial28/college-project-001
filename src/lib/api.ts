@@ -129,38 +129,102 @@ function handleStandaloneFallback<T>(endpoint: string, options: RequestInit = {}
     return standaloneStorage.get<Institution | null>('institution', null) as unknown as T;
   }
   if (endpoint === '/api/auth/login') {
-    const { identifier } = body;
-    const users = standaloneStorage.get<User[]>('users', []);
-    const cleanId = (identifier || '').trim().toUpperCase();
-    const match = users.find(u => u.username?.toUpperCase() === cleanId || u.email?.toUpperCase() === cleanId) || users[0];
-    
+    const { identifier, username, email, password } = body;
+    const cleanId = (identifier || username || email || '').trim();
+    const cleanPass = (password || '').trim();
+
+    if (!cleanId || !cleanPass) {
+      throw new Error('Compulsory Requirement: You must enter both your assigned Member ID and Password.');
+    }
+
+    // STRICT: Check if user exists in registered database
+    const user = standaloneStorage.findUserByIdentifier(cleanId);
+    if (!user) {
+      throw new Error('Invalid Member ID or Password. Only registered campus accounts can enter.');
+    }
+
+    // STRICT: Check if password matches
+    const verified = standaloneStorage.verifyCredentials(cleanId, cleanPass);
+    if (!verified) {
+      throw new Error('Invalid credentials. The password you entered is incorrect.');
+    }
+
+    if (!user.isActive) {
+      throw new Error('Account has been deactivated by administrator.');
+    }
+
     const session: AuthSession = {
       token: 'standalone-token-' + Date.now(),
-      user: match,
+      user: verified.user,
       expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
-      rolePermissions: ['*'],
+      rolePermissions: verified.user.role === 'SYSTEM_OWNER' ? ['*'] : ['READ_CAMPUS'],
     };
+    standaloneStorage.set('current_session_user_id', verified.user.id);
     setStoredToken(session.token);
     recordLocalMemorySync();
     return { session } as unknown as T;
   }
   if (endpoint === '/api/auth/me') {
+    const token = getStoredToken();
+    if (!token) {
+      throw new Error('Authentication required. No active session token.');
+    }
+    const currentUserId = standaloneStorage.get<string | null>('current_session_user_id', null);
     const users = standaloneStorage.get<User[]>('users', []);
-    const user = users[0] || null;
-    return { user, sessionToken: getStoredToken() || 'standalone-token', rolePermissions: ['*'] } as unknown as T;
+    const user = currentUserId ? users.find((u) => u.id === currentUserId) : null;
+    if (!user) {
+      setStoredToken('');
+      throw new Error('Session invalid or user not found.');
+    }
+    return {
+      user,
+      sessionToken: token,
+      rolePermissions: user.role === 'SYSTEM_OWNER' ? ['*'] : ['READ_CAMPUS'],
+    } as unknown as T;
+  }
+  if (endpoint === '/api/auth/logout') {
+    standaloneStorage.set('current_session_user_id', null);
+    setStoredToken('');
+    return { success: true, message: 'Logged out successfully.' } as unknown as T;
+  }
+  if (endpoint === '/api/auth/personalized-entry') {
+    throw new Error('Direct entry without password verification is strictly disabled. Please enter your Member ID and Password.');
   }
   if (endpoint === '/api/auth/update-profile') {
+    const currentUserId = standaloneStorage.get<string | null>('current_session_user_id', null);
     const users = standaloneStorage.get<User[]>('users', []);
-    if (users.length > 0) {
-      users[0] = { ...users[0], ...body, updatedAt: new Date().toISOString() };
+    const idx = users.findIndex((u) => u.id === currentUserId);
+    if (idx >= 0) {
+      users[idx] = { ...users[idx], ...body, updatedAt: new Date().toISOString() };
       standaloneStorage.set('users', users);
       recordLocalMemorySync();
-      return { success: true, user: users[0] } as unknown as T;
+      return { success: true, user: users[idx] } as unknown as T;
     }
     return { success: true, user: body } as unknown as T;
   }
   if (endpoint === '/api/auth/change-password') {
-    return { success: true, message: 'Password updated successfully' } as unknown as T;
+    const currentUserId = standaloneStorage.get<string | null>('current_session_user_id', null);
+    if (!currentUserId) {
+      throw new Error('Authentication required.');
+    }
+    const { currentPassword, newPassword } = body;
+    if (!newPassword || newPassword.length < 6) {
+      throw new Error('New password must be at least 6 characters long.');
+    }
+    const users = standaloneStorage.get<User[]>('users', []);
+    const user = users.find((u) => u.id === currentUserId);
+    if (!user) {
+      throw new Error('User not found.');
+    }
+    if (currentPassword) {
+      const verified = standaloneStorage.verifyCredentials(user.id, currentPassword);
+      if (!verified) {
+        throw new Error('Current password does not match.');
+      }
+    }
+    standaloneStorage.setUserPassword(user.id, user.username, user.email, newPassword);
+    recordLocalMemorySync();
+    return { success: true, message: 'Password updated successfully.' } as unknown as T;
   }
   if (endpoint === '/api/digital-twin/nodes') {
     if (method === 'POST') {
@@ -209,6 +273,9 @@ function handleStandaloneFallback<T>(endpoint: string, options: RequestInit = {}
       };
       users.push(newUser);
       standaloneStorage.set('users', users);
+      if (body.password) {
+        standaloneStorage.setUserPassword(newUser.id, newUser.username, newUser.email, body.password);
+      }
       recordLocalMemorySync();
       return newUser as unknown as T;
     }
@@ -265,7 +332,9 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const method = (options.method || 'GET').toUpperCase();
   const isMutation = method !== 'GET' && method !== 'HEAD';
 
-  if (isStandaloneMode) {
+  // If hosted on GitHub Pages static hosting or offline, use standalone storage
+  const isGitHubPages = typeof window !== 'undefined' && window.location.hostname.includes('github.io');
+  if (isStandaloneMode || isGitHubPages) {
     return handleStandaloneFallback<T>(endpoint, options);
   }
 
@@ -275,9 +344,12 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
       headers,
     });
 
-    if (res.status === 404) {
-      // Backend not found (e.g. GitHub Pages static hosting)
-      console.warn(`[CUOIS] Backend endpoint ${endpoint} 404 Not Found. Switching to standalone client mode.`);
+    const contentType = res.headers.get('content-type') || '';
+    const isHtml = contentType.includes('text/html');
+
+    // Only switch to standalone if a static web server responded with HTML for an /api/ endpoint
+    if (isHtml && endpoint.startsWith('/api/')) {
+      console.warn(`[CUOIS] Backend returned HTML for ${endpoint} (static web server detected). Switching to standalone mode.`);
       isStandaloneMode = true;
       return handleStandaloneFallback<T>(endpoint, options);
     }
@@ -293,8 +365,8 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     }
     return data;
   } catch (err: any) {
-    // If fetch failed completely (network disconnected or static host)
-    if (err.name === 'TypeError' || err.message?.includes('fetch')) {
+    // If fetch failed completely (network disconnected or DNS failure)
+    if (err.name === 'TypeError' || (err.message && err.message.toLowerCase().includes('fetch'))) {
       console.warn('[CUOIS] Network unreachable, activating standalone mode:', err.message);
       isStandaloneMode = true;
       return handleStandaloneFallback<T>(endpoint, options);
